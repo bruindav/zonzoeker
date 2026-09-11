@@ -63,6 +63,70 @@
     margin: 0;
     letter-spacing: -0.01em;
   }
+  .help-btn{
+    margin-left: auto;
+    background: rgba(238,241,238,0.06);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size: 1rem;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .help-btn:hover{ background: rgba(238,241,238,0.12); color: var(--paper); }
+
+  .modal-overlay{
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding: 20px;
+    z-index: 40;
+  }
+  .modal-overlay.open{ display:flex; }
+  .help-modal{
+    background: var(--navy);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    max-width: 440px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 22px 22px 24px;
+  }
+  .help-item{ margin-bottom: 16px; }
+  .help-item strong{
+    display:block;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+    color: var(--gold-soft);
+  }
+  .help-item p{
+    margin:0;
+    font-size: 0.87rem;
+    line-height:1.5;
+    color: var(--text-dim);
+  }
+  .help-close-btn{
+    width:100%;
+    background: var(--gold);
+    color: var(--navy-deep);
+    border:none;
+    border-radius: 8px;
+    padding: 11px;
+    font-weight:600;
+    font-size:0.92rem;
+    cursor:pointer;
+    margin-top: 6px;
+    font-family:'Inter',sans-serif;
+  }
+  .help-close-btn:hover{ background: var(--gold-soft); }
   .rank-caption{
     color: var(--text-dim);
     font-size: 0.8rem;
@@ -495,6 +559,36 @@
 <body>
 <div class="overlay" id="overlay"></div>
 
+<div class="modal-overlay" id="helpOverlay">
+  <div class="help-modal" id="helpModal">
+    <div class="sidebar-head">
+      <span class="sidebar-title">Hoe werkt Zonzoeker</span>
+      <button class="close-btn" id="closeHelp" aria-label="Sluiten">&times;</button>
+    </div>
+    <div class="help-item">
+      <strong>Steden toevoegen</strong>
+      <p>Open het menu linksboven (&#9776;) en typ een plaatsnaam, of zoek grotere steden per land of regio (bv. "Toscane" of "Andalusië").</p>
+    </div>
+    <div class="help-item">
+      <strong>Meerdere lijsten</strong>
+      <p>Maak via de tabs boven de lijst een nieuwe lijst met de "+"-knop, bijvoorbeeld "Nederland" of "Zuid-Europa". Wissel ertussen door op een tab te tikken.</p>
+    </div>
+    <div class="help-item">
+      <strong>Rangschikking</strong>
+      <p>Steden staan gesorteerd op de beste vooruitzichten: veel zon en weinig regen in de komende dagen — niet alleen het weer van nu.</p>
+    </div>
+    <div class="help-item">
+      <strong>Radar</strong>
+      <p>Met "Radar tonen" zie je een neerslagkaart van de afgelopen 2 uur, met je steden erop. Druk op ▶ om de buien te zien bewegen.</p>
+    </div>
+    <div class="help-item">
+      <strong>Op je beginscherm</strong>
+      <p>Zet de pagina via je browser ("Zet op beginscherm" / "Toevoegen aan startscherm") op je telefoon voor het zon-icoon en volledig scherm.</p>
+    </div>
+    <button class="help-close-btn" id="closeHelpBtn">Begrepen</button>
+  </div>
+</div>
+
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-head">
     <span class="sidebar-title">Steden beheren</span>
@@ -527,6 +621,7 @@
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
     <h1>Zonzoeker</h1>
+    <button class="help-btn" id="helpBtn" aria-label="Help">?</button>
   </header>
 
   <div class="list-tabs" id="listTabs"></div>
@@ -730,6 +825,24 @@ const openSidebarBtn = document.getElementById('openSidebar');
 const closeSidebarBtn = document.getElementById('closeSidebar');
 const listTabsEl = document.getElementById('listTabs');
 const sidebarSubheadEl = document.getElementById('sidebarSubhead');
+const helpBtn = document.getElementById('helpBtn');
+const helpOverlay = document.getElementById('helpOverlay');
+const closeHelpBtn = document.getElementById('closeHelp');
+const closeHelpMainBtn = document.getElementById('closeHelpBtn');
+const HELP_SEEN_KEY = 'zonzoeker:helpSeen';
+
+function openHelp(){
+  helpOverlay.classList.add('open');
+}
+function closeHelp(){
+  helpOverlay.classList.remove('open');
+  try{ localStorage.setItem(HELP_SEEN_KEY, '1'); }catch(e){}
+  if(currentList().cities.length === 0) openSidebar();
+}
+helpBtn.addEventListener('click', openHelp);
+closeHelpBtn.addEventListener('click', closeHelp);
+closeHelpMainBtn.addEventListener('click', closeHelp);
+helpOverlay.addEventListener('click', (e) => { if(e.target === helpOverlay) closeHelp(); });
 
 function openSidebar(){
   sidebar.classList.add('open');
@@ -1210,8 +1323,12 @@ chipsEl.addEventListener('click', (e) => {
   await loadCities();
   renderTabs();
   render();
+  let helpSeen = false;
+  try{ helpSeen = localStorage.getItem(HELP_SEEN_KEY) === '1'; }catch(e){}
   if(currentList().cities.length > 0){
     await refreshAll();
+  }else if(!helpSeen){
+    openHelp();
   }else{
     openSidebar();
   }
