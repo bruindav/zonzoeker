@@ -1,0 +1,13 @@
+{
+  "name": "Zonzoeker",
+  "short_name": "Zonzoeker",
+  "description": "Rangschikt jouw steden op wie er nu het mooiste weer heeft.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0e1728",
+  "theme_color": "#16233a",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
