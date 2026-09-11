@@ -541,7 +541,7 @@
     <div class="radar-controls">
       <button class="radar-play" id="radarPlay">&#9654;</button>
       <span class="radar-time" id="radarTime">—</span>
-      <span class="radar-legend">neerslagradar, laatste uur</span>
+      <span class="radar-legend">neerslagradar, laatste 2 uur</span>
     </div>
   </div>
 
@@ -987,7 +987,7 @@ async function initRadarIfNeeded(){
     const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
     const data = await res.json();
     radarHost = data.host;
-    radarFrames = (data.radar && data.radar.past) ? data.radar.past.slice(-6) : [];
+    radarFrames = (data.radar && data.radar.past) ? data.radar.past : [];
     if(radarFrames.length > 0){
       showRadarFrame(radarFrames.length - 1);
     }else{
