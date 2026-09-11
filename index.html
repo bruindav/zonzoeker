@@ -61,6 +61,13 @@
     margin: 0;
     letter-spacing: -0.01em;
   }
+  .rank-caption{
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 0 0 4px;
+  }
 
   .overlay{
     position: fixed;
@@ -367,7 +374,7 @@
     <span class="sidebar-title">Steden beheren</span>
     <button class="close-btn" id="closeSidebar" aria-label="Sluiten">&times;</button>
   </div>
-  <p class="sidebar-intro">Voeg steden toe of zoek grotere steden per regio. Ze verschijnen op de hoofdpagina, gerangschikt op wie er nu het mooiste weer heeft.</p>
+  <p class="sidebar-intro">Voeg steden toe of zoek grotere steden per regio. Ze verschijnen op de hoofdpagina, bovenaan de stad met de beste vooruitzichten: veel zon en weinig regen in de komende dagen.</p>
 
   <form class="add-city" id="addForm">
     <input type="text" id="cityInput" placeholder="Voeg een stad toe, bv. Sevilla" autocomplete="off">
@@ -395,6 +402,8 @@
     </button>
     <h1>Zonzoeker</h1>
   </header>
+
+  <p class="rank-caption">Gerangschikt op zon en weinig regen, komende dagen</p>
 
   <div id="list"></div>
 
@@ -651,11 +660,42 @@ function dayLabel(dateStr, idx){
   return DOW[d.getDay()];
 }
 
+// Per-day "mooi weer"-score: veel zon en weinig regenkans wegen het zwaarst,
+// temperatuur telt licht mee (tot 30°C, warmer voegt niets meer toe).
+const SUN_SCORE_BY_CODE = {
+  0:25, 1:20, 2:8, 3:-5,
+  45:-8, 48:-8,
+  51:-15, 53:-15, 55:-15, 56:-15, 57:-15,
+  61:-20, 63:-20, 65:-20, 66:-20, 67:-20,
+  71:-18, 73:-18, 75:-18, 77:-18,
+  80:-18, 81:-18, 82:-18,
+  85:-20, 86:-20,
+  95:-25, 96:-25, 99:-25
+};
+
+function dayWeatherScore(d){
+  const sun = SUN_SCORE_BY_CODE[Number(d.code)] ?? -5;
+  const rainPenalty = (d.rain || 0) * 0.6;
+  const tempBonus = Math.max(0, Math.min(d.tmax, 30)) * 0.3;
+  return sun - rainPenalty + tempBonus;
+}
+
+// Totaalscore per stad: gewogen gemiddelde over de eerstkomende dagen uit de
+// 10-daagse voorspelling, met meer nadruk op de nabije dagen dan op dag 5.
 function zonScore(w){
   if(!w) return -999;
-  // higher temp and lower cloud cover = better; clear/sunny codes get a boost
-  const codeBonus = [0,1].includes(Number(w.code)) ? 8 : ([2].includes(Number(w.code)) ? 3 : 0);
-  return (w.temp * 1.5) - (w.cloud * 0.25) + codeBonus;
+  if(!w.forecast || w.forecast.length === 0){
+    const codeBonus = [0,1].includes(Number(w.code)) ? 8 : ([2].includes(Number(w.code)) ? 3 : 0);
+    return (w.temp * 1.5) - (w.cloud * 0.25) + codeBonus;
+  }
+  const weights = [1, 0.85, 0.7, 0.55, 0.4];
+  let total = 0, weightSum = 0;
+  w.forecast.slice(0, weights.length).forEach((d, i) => {
+    const wt = weights[i] ?? 0.3;
+    total += dayWeatherScore(d) * wt;
+    weightSum += wt;
+  });
+  return weightSum > 0 ? total / weightSum : -999;
 }
 
 async function geocode(name){
