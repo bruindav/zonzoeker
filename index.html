@@ -10,6 +10,8 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   :root{
     --navy: #16233a;
@@ -108,6 +110,90 @@
     font-weight:700;
     border-style: dashed;
   }
+
+  .rank-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 10px;
+    margin: 0 0 4px;
+  }
+  .rank-header .rank-caption{ margin:0; }
+  .radar-toggle{
+    flex-shrink:0;
+    background: rgba(238,241,238,0.05);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    border-radius: 999px;
+    padding: 5px 14px;
+    font-size: 0.78rem;
+    font-weight:600;
+    font-family:'Inter',sans-serif;
+    cursor:pointer;
+  }
+  .radar-toggle:hover{ background: rgba(238,241,238,0.1); color: var(--paper); }
+  .radar-toggle.active{
+    background: rgba(232,163,61,0.15);
+    border-color: rgba(232,163,61,0.5);
+    color: var(--gold-soft);
+  }
+
+  .radar-panel{
+    display:none;
+    margin: 14px 0 20px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .radar-panel.open{ display:block; }
+  .radar-map{
+    width: 100%;
+    height: 320px;
+    background: #0e1728;
+  }
+  .radar-controls{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--navy);
+  }
+  .radar-play{
+    background: rgba(232,163,61,0.15);
+    border: 1px solid rgba(232,163,61,0.4);
+    color: var(--gold-soft);
+    border-radius: 999px;
+    width: 30px; height: 30px;
+    font-size: 0.8rem;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .radar-time{ font-size: 0.85rem; font-weight:600; }
+  .radar-legend{
+    margin-left:auto;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+  .leaflet-control-zoom a{
+    background: var(--navy) !important;
+    color: var(--paper) !important;
+    border-color: var(--line) !important;
+  }
+  .leaflet-control-attribution{
+    background: rgba(14,23,40,0.8) !important;
+    color: var(--text-dim) !important;
+    font-size: 0.65rem !important;
+  }
+  .leaflet-control-attribution a{ color: var(--cool) !important; }
+  .city-tooltip{
+    background: var(--navy);
+    color: var(--paper);
+    border: 1px solid var(--line);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.78rem;
+    padding: 3px 8px;
+  }
+  .city-tooltip::before{ display:none; }
 
   .overlay{
     position: fixed;
@@ -445,7 +531,19 @@
 
   <div class="list-tabs" id="listTabs"></div>
 
-  <p class="rank-caption">Gerangschikt op zon en weinig regen, komende dagen</p>
+  <div class="rank-header">
+    <p class="rank-caption">Gerangschikt op zon en weinig regen, komende dagen</p>
+    <button class="radar-toggle" id="radarToggle">Radar tonen</button>
+  </div>
+
+  <div class="radar-panel" id="radarPanel">
+    <div id="radarMap" class="radar-map"></div>
+    <div class="radar-controls">
+      <button class="radar-play" id="radarPlay">&#9654;</button>
+      <span class="radar-time" id="radarTime">—</span>
+      <span class="radar-legend">neerslagradar, laatste uur</span>
+    </div>
+  </div>
 
   <div id="list"></div>
 
@@ -805,6 +903,7 @@ async function fetchWeather(city){
 function render(){
   const list = currentList();
   sidebarSubheadEl.textContent = `Steden in "${list.name}"`;
+  if(radarOpen && radarMap) updateRadarMarkers();
   // chips (sidebar) — cities in the active list
   chipsEl.innerHTML = list.cities.map(c => `
     <span class="chip" data-id="${c.id}">
@@ -859,6 +958,104 @@ function render(){
       </div>`;
   }).join('') + `</div>`;
 }
+
+// ---- Radar map ----
+let radarMap = null;
+let radarTileLayer = null;
+let radarHost = '';
+let radarFrames = [];
+let radarFrameIndex = 0;
+let radarPlaying = false;
+let radarTimer = null;
+let radarMarkers = [];
+let radarOpen = false;
+
+const radarToggleBtn = document.getElementById('radarToggle');
+const radarPanelEl = document.getElementById('radarPanel');
+const radarPlayBtn = document.getElementById('radarPlay');
+const radarTimeEl = document.getElementById('radarTime');
+
+async function initRadarIfNeeded(){
+  if(radarMap) return;
+  radarMap = L.map('radarMap', { attributionControl: true }).setView([50, 10], 4);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap, &copy; CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(radarMap);
+  try{
+    const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+    const data = await res.json();
+    radarHost = data.host;
+    radarFrames = (data.radar && data.radar.past) ? data.radar.past.slice(-6) : [];
+    if(radarFrames.length > 0){
+      showRadarFrame(radarFrames.length - 1);
+    }else{
+      radarTimeEl.textContent = 'Radar niet beschikbaar';
+    }
+  }catch(e){
+    radarTimeEl.textContent = 'Radar niet beschikbaar';
+  }
+}
+
+function showRadarFrame(idx){
+  if(!radarFrames[idx] || !radarMap) return;
+  radarFrameIndex = idx;
+  const frame = radarFrames[idx];
+  const url = `${radarHost}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+  const newLayer = L.tileLayer(url, { opacity: 0.75, maxNativeZoom: 7, zIndex: 5 });
+  newLayer.addTo(radarMap);
+  if(radarTileLayer) radarMap.removeLayer(radarTileLayer);
+  radarTileLayer = newLayer;
+  radarTimeEl.textContent = new Date(frame.time * 1000).toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit'});
+}
+
+function playRadar(){
+  if(radarFrames.length < 2) return;
+  radarPlaying = true;
+  radarPlayBtn.innerHTML = '&#10074;&#10074;';
+  radarTimer = setInterval(() => {
+    showRadarFrame((radarFrameIndex + 1) % radarFrames.length);
+  }, 600);
+}
+function stopRadar(){
+  radarPlaying = false;
+  radarPlayBtn.innerHTML = '&#9654;';
+  clearInterval(radarTimer);
+}
+radarPlayBtn.addEventListener('click', () => radarPlaying ? stopRadar() : playRadar());
+
+function updateRadarMarkers(){
+  if(!radarMap) return;
+  radarMarkers.forEach(m => radarMap.removeLayer(m));
+  radarMarkers = [];
+  const pts = currentList().cities.map(c => [c.lat, c.lon]);
+  currentList().cities.forEach(c => {
+    const marker = L.circleMarker([c.lat, c.lon], {
+      radius: 7, color: '#e8a33d', weight: 2, fillColor: '#e8a33d', fillOpacity: 0.85
+    }).bindTooltip(c.name, { direction: 'top', offset: [0, -6], className: 'city-tooltip' });
+    marker.addTo(radarMap);
+    radarMarkers.push(marker);
+  });
+  if(pts.length === 1){
+    radarMap.setView(pts[0], 7);
+  }else if(pts.length > 1){
+    radarMap.fitBounds(pts, { padding: [30, 30] });
+  }
+}
+
+radarToggleBtn.addEventListener('click', async () => {
+  radarOpen = !radarOpen;
+  radarPanelEl.classList.toggle('open', radarOpen);
+  radarToggleBtn.classList.toggle('active', radarOpen);
+  radarToggleBtn.textContent = radarOpen ? 'Radar verbergen' : 'Radar tonen';
+  if(radarOpen){
+    await initRadarIfNeeded();
+    setTimeout(() => { if(radarMap){ radarMap.invalidateSize(); updateRadarMarkers(); } }, 60);
+  }else{
+    stopRadar();
+  }
+});
 
 function renderTabs(){
   listTabsEl.innerHTML = appData.lists.map(l => `
