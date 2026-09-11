@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zonzoeker</title>
+<meta name="theme-color" content="#16233a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy: #16233a;
+    --navy-deep: #0e1728;
+    --paper: #eef1ee;
+    --gold: #e8a33d;
+    --gold-soft: #f3c878;
+    --cool: #6fa8b5;
+    --line: rgba(238,241,238,0.14);
+    --text-dim: rgba(238,241,238,0.62);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background: var(--navy-deep);
+    color: var(--paper);
+    font-family: 'Inter', sans-serif;
+    min-height:100vh;
+  }
+  .wrap{
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 20px 24px 80px;
+  }
+  .topbar{
+    display:flex;
+    align-items:center;
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+  .menu-btn{
+    background: rgba(238,241,238,0.06);
+    border: 1px solid var(--line);
+    color: var(--paper);
+    border-radius: 8px;
+    width: 40px;
+    height: 40px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .menu-btn:hover{ background: rgba(238,241,238,0.12); }
+  .topbar h1{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size: clamp(1.6rem, 5vw, 2.2rem);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .overlay{
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 20;
+  }
+  .overlay.open{ opacity: 1; pointer-events: auto; }
+
+  .sidebar{
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: min(340px, 88vw);
+    background: var(--navy);
+    border-right: 1px solid var(--line);
+    z-index: 30;
+    padding: 22px 20px 24px;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+  .sidebar.open{ transform: translateX(0); }
+  .sidebar-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom: 10px;
+  }
+  .sidebar-title{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size: 1.25rem;
+  }
+  .close-btn{
+    background:none;
+    border:none;
+    color: var(--paper);
+    font-size: 1.5rem;
+    line-height:1;
+    cursor:pointer;
+    padding: 4px 8px;
+  }
+  .sidebar-intro{
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    line-height:1.5;
+    margin: 0 0 20px;
+  }
+  .sidebar-current{ margin-top: 22px; }
+  .sidebar-subhead{
+    display:block;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+
+  form.add-city{
+    display:flex;
+    gap:8px;
+    margin: 28px 0 16px;
+  }
+  form.add-city input{
+    flex:1;
+    background: rgba(238,241,238,0.06);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: var(--paper);
+    font-family:'Inter',sans-serif;
+    font-size: 0.95rem;
+  }
+  form.add-city input::placeholder{ color: rgba(238,241,238,0.4); }
+  form.add-city input:focus{ outline:none; border-color: var(--gold); }
+  form.add-city button{
+    background: var(--gold);
+    color: var(--navy-deep);
+    border:none;
+    border-radius: 8px;
+    padding: 0 20px;
+    font-weight:600;
+    font-size:0.95rem;
+    cursor:pointer;
+    transition: background 0.15s;
+  }
+  form.add-city button:hover{ background: var(--gold-soft); }
+  form.add-city button:disabled{ opacity:0.5; cursor:default; }
+
+  .chips{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom: 8px;
+    min-height: 0;
+  }
+  .chip{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    background: rgba(238,241,238,0.06);
+    border:1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 8px 5px 14px;
+    font-size:0.85rem;
+    color: var(--text-dim);
+  }
+  .chip button{
+    background:none;
+    border:none;
+    color: var(--text-dim);
+    cursor:pointer;
+    font-size: 1rem;
+    line-height:1;
+    padding: 2px 6px;
+    border-radius: 999px;
+  }
+  .chip button:hover{ color: var(--paper); background: rgba(238,241,238,0.12); }
+
+  .status{
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    min-height: 1.2em;
+    margin: 4px 0 24px;
+  }
+  .status.error{ color: #e88a6f; }
+
+  .region-form{ margin: 10px 0 0; }
+  .region-form input{ font-size: 0.9rem; }
+  .region-form button{
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--paper);
+  }
+  .region-form button:hover{ background: rgba(238,241,238,0.08); }
+
+  .region-results{
+    margin: 12px 0 28px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .region-hit{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.9rem;
+  }
+  .region-hit:last-child{ border-bottom:none; }
+  .region-hit .rh-name{ font-weight:600; }
+  .region-hit .rh-meta{ color: var(--text-dim); font-size: 0.8rem; }
+  .region-hit .rh-add{
+    background: rgba(232,163,61,0.15);
+    color: var(--gold-soft);
+    border: 1px solid rgba(232,163,61,0.4);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.82rem;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .region-hit .rh-add:hover{ background: rgba(232,163,61,0.28); }
+  .region-hit .rh-add:disabled{ opacity:0.4; cursor:default; }
+  .region-empty{
+    padding: 12px 14px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  .rank-list{
+    border-top: 1px solid var(--line);
+  }
+  .rank-block{
+    border-bottom: 1px solid var(--line);
+    padding: 16px 4px 18px;
+  }
+  .rank-row{
+    display:grid;
+    grid-template-columns: 32px 40px 1fr auto auto;
+    align-items:center;
+    gap: 14px;
+  }
+  .forecast-strip{
+    display:flex;
+    gap: 4px;
+    margin: 14px 0 0 46px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .forecast-day{
+    flex: 0 0 58px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap: 3px;
+    padding: 8px 2px 6px;
+    border-radius: 8px;
+    background: rgba(238,241,238,0.04);
+  }
+  .forecast-day .dow{
+    font-size: 0.68rem;
+    text-transform: lowercase;
+    color: var(--text-dim);
+  }
+  .forecast-day .fc-icon{ width:22px; height:22px; margin: 2px 0; }
+  .forecast-day .rainbar{
+    width: 18px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(111,168,181,0.18);
+    position: relative;
+    overflow:hidden;
+    margin-top:1px;
+  }
+  .forecast-day .rainbar span{
+    position:absolute;
+    left:0; top:0; bottom:0;
+    background: var(--cool);
+    border-radius: 2px;
+  }
+  .forecast-day .rainpct{
+    font-size: 0.6rem;
+    color: var(--text-dim);
+  }
+  .forecast-day .tmax{
+    font-size: 0.82rem;
+    font-weight:600;
+  }
+  .forecast-day .tmin{
+    font-size: 0.72rem;
+    color: var(--text-dim);
+  }
+  @media (max-width: 480px){
+    .forecast-strip{ margin-left: 0; }
+  }
+  .rank-num{
+    font-family:'Fraunces', serif;
+    font-size:1.1rem;
+    color: var(--text-dim);
+  }
+  .rank-row:first-child .rank-num{ color: var(--gold); }
+  .rank-icon{ width:32px; height:32px; }
+  .rank-city{ min-width:0; }
+  .rank-city .name{
+    font-size: 1.05rem;
+    font-weight:600;
+  }
+  .rank-city .desc{
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    text-transform: lowercase;
+  }
+  .rank-detail{
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    text-align:right;
+    white-space:nowrap;
+  }
+  .rank-temp{
+    font-family:'Fraunces', serif;
+    font-size: 1.5rem;
+    font-weight:600;
+    text-align:right;
+    white-space:nowrap;
+  }
+  .remove-btn{
+    background:none;border:none;color:var(--text-dim);
+    cursor:pointer; font-size:1rem; padding:2px 4px;
+  }
+  .remove-btn:hover{ color:#e88a6f; }
+
+  .empty{
+    padding: 40px 4px;
+    color: var(--text-dim);
+    font-size: 0.95rem;
+    text-align:center;
+    border-bottom: 1px solid var(--line);
+  }
+
+  footer{
+    margin-top: 20px;
+    font-size: 0.78rem;
+    color: rgba(238,241,238,0.4);
+  }
+
+  @media (max-width: 480px){
+    .rank-row{ grid-template-columns: 24px 32px 1fr auto; }
+    .rank-detail{ display:none; }
+  }
+</style>
+</head>
+<body>
+<div class="overlay" id="overlay"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-head">
+    <span class="sidebar-title">Steden beheren</span>
+    <button class="close-btn" id="closeSidebar" aria-label="Sluiten">&times;</button>
+  </div>
+  <p class="sidebar-intro">Voeg steden toe of zoek grotere steden per regio. Ze verschijnen op de hoofdpagina, gerangschikt op wie er nu het mooiste weer heeft.</p>
+
+  <form class="add-city" id="addForm">
+    <input type="text" id="cityInput" placeholder="Voeg een stad toe, bv. Sevilla" autocomplete="off">
+    <button type="submit" id="addBtn">Toevoegen</button>
+  </form>
+
+  <form class="add-city region-form" id="regionForm">
+    <input type="text" id="regionInput" placeholder="Zoek op regio, bv. Toscane" autocomplete="off">
+    <button type="submit" id="regionBtn">Zoeken</button>
+  </form>
+  <div id="regionResults"></div>
+
+  <div class="status" id="status"></div>
+
+  <div class="sidebar-current">
+    <span class="sidebar-subhead">Jouw steden</span>
+    <div class="chips" id="chips"></div>
+  </div>
+</aside>
+
+<div class="wrap">
+  <header class="topbar">
+    <button class="menu-btn" id="openSidebar" aria-label="Menu">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <h1>Zonzoeker</h1>
+  </header>
+
+  <div id="list"></div>
+
+  <footer>Gegevens via Open-Meteo. Bijgewerkt: <span id="updated">—</span></footer>
+</div>
+
+
+<script>
+const STORAGE_KEY = 'zonzoeker:cities';
+let cities = []; // { id, name, lat, lon, admin, country }
+let weatherData = {}; // id -> {temp, cloud, code, isDay}
+
+// Curated set of larger European cities, used for the "search by region" feature.
+// pop is an approximate population, only used to rank results within a region.
+const EU_CITIES = [
+  {n:'Amsterdam',c:'Nederland',r:'Noord-Holland',lat:52.37,lon:4.90,pop:921000},
+  {n:'Rotterdam',c:'Nederland',r:'Zuid-Holland',lat:51.92,lon:4.48,pop:656000},
+  {n:'Den Haag',c:'Nederland',r:'Zuid-Holland',lat:52.08,lon:4.31,pop:548000},
+  {n:'Utrecht',c:'Nederland',r:'Utrecht',lat:52.09,lon:5.12,pop:361000},
+  {n:'Eindhoven',c:'Nederland',r:'Noord-Brabant',lat:51.44,lon:5.48,pop:238000},
+  {n:'Groningen',c:'Nederland',r:'Groningen',lat:53.22,lon:6.57,pop:233000},
+  {n:'Tilburg',c:'Nederland',r:'Noord-Brabant',lat:51.56,lon:5.09,pop:224000},
+  {n:'Almere',c:'Nederland',r:'Flevoland',lat:52.35,lon:5.26,pop:214000},
+  {n:'Breda',c:'Nederland',r:'Noord-Brabant',lat:51.59,lon:4.78,pop:184000},
+  {n:'Nijmegen',c:'Nederland',r:'Gelderland',lat:51.84,lon:5.85,pop:179000},
+  {n:'Brussel',c:'België',r:'Brussel',lat:50.85,lon:4.35,pop:1200000},
+  {n:'Antwerpen',c:'België',r:'Antwerpen',lat:51.22,lon:4.40,pop:530000},
+  {n:'Gent',c:'België',r:'Oost-Vlaanderen',lat:51.05,lon:3.72,pop:263000},
+  {n:'Charleroi',c:'België',r:'Henegouwen',lat:50.41,lon:4.44,pop:201000},
+  {n:'Luik',c:'België',r:'Luik',lat:50.63,lon:5.57,pop:197000},
+  {n:'Brugge',c:'België',r:'West-Vlaanderen',lat:51.21,lon:3.22,pop:118000},
+  {n:'Berlijn',c:'Duitsland',r:'Berlijn',lat:52.52,lon:13.41,pop:3677000},
+  {n:'Hamburg',c:'Duitsland',r:'Hamburg',lat:53.55,lon:9.99,pop:1900000},
+  {n:'München',c:'Duitsland',r:'Beieren',lat:48.14,lon:11.58,pop:1488000},
+  {n:'Keulen',c:'Duitsland',r:'Noordrijn-Westfalen',lat:50.94,lon:6.96,pop:1073000},
+  {n:'Frankfurt',c:'Duitsland',r:'Hessen',lat:50.11,lon:8.68,pop:753000},
+  {n:'Stuttgart',c:'Duitsland',r:'Baden-Württemberg',lat:48.78,lon:9.18,pop:626000},
+  {n:'Düsseldorf',c:'Duitsland',r:'Noordrijn-Westfalen',lat:51.23,lon:6.78,pop:619000},
+  {n:'Leipzig',c:'Duitsland',r:'Saksen',lat:51.34,lon:12.37,pop:601000},
+  {n:'Dortmund',c:'Duitsland',r:'Noordrijn-Westfalen',lat:51.51,lon:7.47,pop:588000},
+  {n:'Essen',c:'Duitsland',r:'Noordrijn-Westfalen',lat:51.46,lon:7.01,pop:579000},
+  {n:'Dresden',c:'Duitsland',r:'Saksen',lat:51.05,lon:13.74,pop:556000},
+  {n:'Bremen',c:'Duitsland',r:'Bremen',lat:53.08,lon:8.81,pop:566000},
+  {n:'Hannover',c:'Duitsland',r:'Nedersaksen',lat:52.37,lon:9.73,pop:538000},
+  {n:'Nürnberg',c:'Duitsland',r:'Beieren',lat:49.45,lon:11.08,pop:518000},
+  {n:'Parijs',c:'Frankrijk',r:'Île-de-France',lat:48.85,lon:2.35,pop:2148000},
+  {n:'Marseille',c:'Frankrijk',r:'Provence-Alpes-Côte d\'Azur',lat:43.30,lon:5.37,pop:870000},
+  {n:'Lyon',c:'Frankrijk',r:'Auvergne-Rhône-Alpes',lat:45.76,lon:4.84,pop:516000},
+  {n:'Toulouse',c:'Frankrijk',r:'Occitanie',lat:43.60,lon:1.44,pop:479000},
+  {n:'Nice',c:'Frankrijk',r:'Provence-Alpes-Côte d\'Azur',lat:43.70,lon:7.27,pop:342000},
+  {n:'Nantes',c:'Frankrijk',r:'Pays de la Loire',lat:47.22,lon:-1.55,pop:314000},
+  {n:'Straatsburg',c:'Frankrijk',r:'Grand Est',lat:48.58,lon:7.75,pop:287000},
+  {n:'Montpellier',c:'Frankrijk',r:'Occitanie',lat:43.61,lon:3.88,pop:285000},
+  {n:'Bordeaux',c:'Frankrijk',r:'Nouvelle-Aquitaine',lat:44.84,lon:-0.58,pop:257000},
+  {n:'Lille',c:'Frankrijk',r:'Hauts-de-France',lat:50.63,lon:3.06,pop:233000},
+  {n:'Rennes',c:'Frankrijk',r:'Bretagne',lat:48.11,lon:-1.68,pop:217000},
+  {n:'Madrid',c:'Spanje',r:'Madrid',lat:40.42,lon:-3.70,pop:3223000},
+  {n:'Barcelona',c:'Spanje',r:'Catalonië',lat:41.39,lon:2.16,pop:1620000},
+  {n:'Valencia',c:'Spanje',r:'Valencia',lat:39.47,lon:-0.38,pop:791000},
+  {n:'Sevilla',c:'Spanje',r:'Andalusië',lat:37.39,lon:-5.99,pop:688000},
+  {n:'Zaragoza',c:'Spanje',r:'Aragón',lat:41.65,lon:-0.89,pop:675000},
+  {n:'Málaga',c:'Spanje',r:'Andalusië',lat:36.72,lon:-4.42,pop:578000},
+  {n:'Murcia',c:'Spanje',r:'Murcia',lat:37.99,lon:-1.13,pop:453000},
+  {n:'Bilbao',c:'Spanje',r:'Baskenland',lat:43.26,lon:-2.93,pop:345000},
+  {n:'Alicante',c:'Spanje',r:'Valencia',lat:38.35,lon:-0.48,pop:334000},
+  {n:'Rome',c:'Italië',r:'Lazio',lat:41.90,lon:12.50,pop:2873000},
+  {n:'Milaan',c:'Italië',r:'Lombardije',lat:45.46,lon:9.19,pop:1352000},
+  {n:'Napels',c:'Italië',r:'Campanië',lat:40.85,lon:14.27,pop:914000},
+  {n:'Turijn',c:'Italië',r:'Piëmont',lat:45.07,lon:7.69,pop:848000},
+  {n:'Palermo',c:'Italië',r:'Sicilië',lat:38.12,lon:13.36,pop:630000},
+  {n:'Genua',c:'Italië',r:'Ligurië',lat:44.41,lon:8.93,pop:560000},
+  {n:'Bologna',c:'Italië',r:'Emilia-Romagna',lat:44.49,lon:11.34,pop:390000},
+  {n:'Florence',c:'Italië',r:'Toscane',lat:43.77,lon:11.26,pop:367000},
+  {n:'Venetië',c:'Italië',r:'Veneto',lat:45.44,lon:12.33,pop:258000},
+  {n:'Verona',c:'Italië',r:'Veneto',lat:45.44,lon:10.99,pop:257000},
+  {n:'Lissabon',c:'Portugal',r:'Lissabon',lat:38.72,lon:-9.14,pop:545000},
+  {n:'Porto',c:'Portugal',r:'Porto',lat:41.15,lon:-8.61,pop:231000},
+  {n:'Braga',c:'Portugal',r:'Braga',lat:41.55,lon:-8.42,pop:137000},
+  {n:'Londen',c:'Verenigd Koninkrijk',r:'Engeland',lat:51.51,lon:-0.13,pop:8900000},
+  {n:'Birmingham',c:'Verenigd Koninkrijk',r:'Engeland',lat:52.48,lon:-1.90,pop:1141000},
+  {n:'Glasgow',c:'Verenigd Koninkrijk',r:'Schotland',lat:55.86,lon:-4.25,pop:635000},
+  {n:'Leeds',c:'Verenigd Koninkrijk',r:'Engeland',lat:53.80,lon:-1.55,pop:536000},
+  {n:'Edinburgh',c:'Verenigd Koninkrijk',r:'Schotland',lat:55.95,lon:-3.19,pop:526000},
+  {n:'Manchester',c:'Verenigd Koninkrijk',r:'Engeland',lat:53.48,lon:-2.24,pop:552000},
+  {n:'Liverpool',c:'Verenigd Koninkrijk',r:'Engeland',lat:53.41,lon:-2.98,pop:498000},
+  {n:'Bristol',c:'Verenigd Koninkrijk',r:'Engeland',lat:51.45,lon:-2.59,pop:465000},
+  {n:'Dublin',c:'Ierland',r:'Leinster',lat:53.35,lon:-6.26,pop:1173000},
+  {n:'Cork',c:'Ierland',r:'Munster',lat:51.90,lon:-8.47,pop:210000},
+  {n:'Zürich',c:'Zwitserland',r:'Zürich',lat:47.38,lon:8.54,pop:436000},
+  {n:'Genève',c:'Zwitserland',r:'Genève',lat:46.20,lon:6.14,pop:203000},
+  {n:'Bazel',c:'Zwitserland',r:'Bazel-Stad',lat:47.56,lon:7.59,pop:178000},
+  {n:'Bern',c:'Zwitserland',r:'Bern',lat:46.95,lon:7.45,pop:134000},
+  {n:'Wenen',c:'Oostenrijk',r:'Wenen',lat:48.21,lon:16.37,pop:1930000},
+  {n:'Graz',c:'Oostenrijk',r:'Stiermarken',lat:47.07,lon:15.44,pop:291000},
+  {n:'Linz',c:'Oostenrijk',r:'Opper-Oostenrijk',lat:48.31,lon:14.29,pop:210000},
+  {n:'Salzburg',c:'Oostenrijk',r:'Salzburg',lat:47.80,lon:13.05,pop:155000},
+  {n:'Innsbruck',c:'Oostenrijk',r:'Tirol',lat:47.27,lon:11.39,pop:132000},
+  {n:'Warschau',c:'Polen',r:'Mazovië',lat:52.23,lon:21.01,pop:1790000},
+  {n:'Krakau',c:'Polen',r:'Klein-Polen',lat:50.06,lon:19.94,pop:780000},
+  {n:'Łódź',c:'Polen',r:'Łódź',lat:51.77,lon:19.46,pop:670000},
+  {n:'Wrocław',c:'Polen',r:'Neder-Silezië',lat:51.11,lon:17.04,pop:640000},
+  {n:'Poznań',c:'Polen',r:'Groot-Polen',lat:52.41,lon:16.93,pop:534000},
+  {n:'Gdańsk',c:'Polen',r:'Pommeren',lat:54.35,lon:18.65,pop:470000},
+  {n:'Praag',c:'Tsjechië',r:'Praag',lat:50.09,lon:14.42,pop:1310000},
+  {n:'Brno',c:'Tsjechië',r:'Zuid-Moravië',lat:49.20,lon:16.61,pop:380000},
+  {n:'Ostrava',c:'Tsjechië',r:'Moravië-Silezië',lat:49.83,lon:18.29,pop:280000},
+  {n:'Bratislava',c:'Slowakije',r:'Bratislava',lat:48.15,lon:17.11,pop:475000},
+  {n:'Košice',c:'Slowakije',r:'Košice',lat:48.72,lon:21.26,pop:230000},
+  {n:'Boedapest',c:'Hongarije',r:'Boedapest',lat:47.50,lon:19.04,pop:1750000},
+  {n:'Debrecen',c:'Hongarije',r:'Hajdú-Bihar',lat:47.53,lon:21.64,pop:200000},
+  {n:'Boekarest',c:'Roemenië',r:'Boekarest',lat:44.43,lon:26.10,pop:1830000},
+  {n:'Cluj-Napoca',c:'Roemenië',r:'Cluj',lat:46.77,lon:23.60,pop:320000},
+  {n:'Timișoara',c:'Roemenië',r:'Timiș',lat:45.75,lon:21.23,pop:320000},
+  {n:'Sofia',c:'Bulgarije',r:'Sofia',lat:42.70,lon:23.32,pop:1270000},
+  {n:'Plovdiv',c:'Bulgarije',r:'Plovdiv',lat:42.14,lon:24.75,pop:340000},
+  {n:'Athene',c:'Griekenland',r:'Attica',lat:37.98,lon:23.73,pop:3150000},
+  {n:'Thessaloniki',c:'Griekenland',r:'Centraal-Macedonië',lat:40.64,lon:22.94,pop:1000000},
+  {n:'Patras',c:'Griekenland',r:'West-Griekenland',lat:38.25,lon:21.73,pop:215000},
+  {n:'Heraklion',c:'Griekenland',r:'Kreta',lat:35.34,lon:25.13,pop:180000},
+  {n:'Zagreb',c:'Kroatië',r:'Zagreb',lat:45.81,lon:15.98,pop:800000},
+  {n:'Split',c:'Kroatië',r:'Dalmatië',lat:43.51,lon:16.44,pop:178000},
+  {n:'Ljubljana',c:'Slovenië',r:'Ljubljana',lat:46.06,lon:14.51,pop:295000},
+  {n:'Belgrado',c:'Servië',r:'Belgrado',lat:44.79,lon:20.45,pop:1400000},
+  {n:'Novi Sad',c:'Servië',r:'Vojvodina',lat:45.27,lon:19.83,pop:340000},
+  {n:'Kopenhagen',c:'Denemarken',r:'Hoofdstadregio',lat:55.68,lon:12.57,pop:660000},
+  {n:'Aarhus',c:'Denemarken',r:'Midden-Jutland',lat:56.16,lon:10.20,pop:280000},
+  {n:'Stockholm',c:'Zweden',r:'Stockholm',lat:59.33,lon:18.07,pop:980000},
+  {n:'Göteborg',c:'Zweden',r:'Västra Götaland',lat:57.71,lon:11.97,pop:580000},
+  {n:'Malmö',c:'Zweden',r:'Skåne',lat:55.60,lon:13.00,pop:350000},
+  {n:'Oslo',c:'Noorwegen',r:'Oslo',lat:59.91,lon:10.75,pop:700000},
+  {n:'Bergen',c:'Noorwegen',r:'Vestland',lat:60.39,lon:5.32,pop:285000},
+  {n:'Helsinki',c:'Finland',r:'Uusimaa',lat:60.17,lon:24.94,pop:660000},
+  {n:'Tampere',c:'Finland',r:'Pirkanmaa',lat:61.50,lon:23.79,pop:240000},
+  {n:'Reykjavik',c:'IJsland',r:'Höfuðborgarsvæðið',lat:64.15,lon:-21.94,pop:135000},
+  {n:'Tallinn',c:'Estland',r:'Harju',lat:59.44,lon:24.75,pop:440000},
+  {n:'Riga',c:'Letland',r:'Riga',lat:56.95,lon:24.11,pop:605000},
+  {n:'Vilnius',c:'Litouwen',r:'Vilnius',lat:54.69,lon:25.28,pop:580000},
+  {n:'Luxemburg',c:'Luxemburg',r:'Luxemburg',lat:49.61,lon:6.13,pop:130000},
+  {n:'Nicosia',c:'Cyprus',r:'Nicosia',lat:35.19,lon:33.38,pop:200000},
+  {n:'Istanbul',c:'Turkije',r:'Marmara',lat:41.01,lon:28.98,pop:15500000},
+  {n:'Kiev',c:'Oekraïne',r:'Kiev',lat:50.45,lon:30.52,pop:2950000}
+];
+
+function normalizeStr(s){
+  return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function searchCitiesByRegion(query, limit = 8){
+  const q = normalizeStr(query.trim());
+  if(!q) return [];
+  return EU_CITIES
+    .filter(city => {
+      const country = normalizeStr(city.c);
+      const region = normalizeStr(city.r);
+      return country.includes(q) || q.includes(country) || region.includes(q) || q.includes(region);
+    })
+    .sort((a, b) => b.pop - a.pop)
+    .slice(0, limit);
+}
+
+const chipsEl = document.getElementById('chips');
+const listEl = document.getElementById('list');
+const statusEl = document.getElementById('status');
+const updatedEl = document.getElementById('updated');
+const form = document.getElementById('addForm');
+const input = document.getElementById('cityInput');
+const addBtn = document.getElementById('addBtn');
+const regionForm = document.getElementById('regionForm');
+const regionInput = document.getElementById('regionInput');
+const regionBtn = document.getElementById('regionBtn');
+const regionResultsEl = document.getElementById('regionResults');
+const sidebar = document.getElementById('sidebar');
+const overlay = document.getElementById('overlay');
+const openSidebarBtn = document.getElementById('openSidebar');
+const closeSidebarBtn = document.getElementById('closeSidebar');
+
+function openSidebar(){
+  sidebar.classList.add('open');
+  overlay.classList.add('open');
+}
+function closeSidebar(){
+  sidebar.classList.remove('open');
+  overlay.classList.remove('open');
+}
+openSidebarBtn.addEventListener('click', openSidebar);
+closeSidebarBtn.addEventListener('click', closeSidebar);
+overlay.addEventListener('click', closeSidebar);
+
+function setStatus(msg, isError){
+  statusEl.textContent = msg || '';
+  statusEl.classList.toggle('error', !!isError);
+}
+
+async function loadCities(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) cities = JSON.parse(raw);
+  }catch(e){
+    cities = [];
+  }
+}
+
+function saveCities(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cities));
+  }catch(e){
+    // best-effort; ignore failures (e.g. private browsing)
+  }
+}
+
+function weatherIcon(code, isDay){
+  // simplified WMO groups
+  const c = Number(code);
+  if(c === 0) return isDay ? iconSun() : iconMoon();
+  if(c === 1 || c === 2) return iconPartly();
+  if(c === 3) return iconCloud();
+  if([45,48].includes(c)) return iconFog();
+  if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(c)) return iconRain();
+  if([71,73,75,77,85,86].includes(c)) return iconSnow();
+  if([95,96,99].includes(c)) return iconStorm();
+  return iconCloud();
+}
+function svg(inner){ return `<svg class="rank-icon" viewBox="0 0 24 24" fill="none">${inner}</svg>`; }
+function iconSun(){ return svg(`<circle cx="12" cy="12" r="4.5" fill="#e8a33d"/><g stroke="#e8a33d" stroke-width="1.6" stroke-linecap="round"><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/><line x1="4.5" y1="4.5" x2="6.2" y2="6.2"/><line x1="17.8" y1="17.8" x2="19.5" y2="19.5"/><line x1="4.5" y1="19.5" x2="6.2" y2="17.8"/><line x1="17.8" y1="6.2" x2="19.5" y2="4.5"/></g>`); }
+function iconMoon(){ return svg(`<path d="M15 3a9 9 0 1 0 6 15.6A9.4 9.4 0 0 1 15 3z" fill="#6fa8b5"/>`); }
+function iconPartly(){ return svg(`<circle cx="9.5" cy="9.5" r="4" fill="#e8a33d"/><path d="M6 20a4.6 4.6 0 0 1-.5-9.2A5.5 5.5 0 0 1 16 9.4 4.3 4.3 0 0 1 17.5 20H6z" fill="#c9cfd6"/>`); }
+function iconCloud(){ return svg(`<path d="M6 19a5 5 0 0 1-.6-10A6 6 0 0 1 17 8.8 4.6 4.6 0 0 1 18 18H6z" fill="#c9cfd6"/>`); }
+function iconFog(){ return svg(`<g stroke="#c9cfd6" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="8" x2="21" y2="8"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="16" x2="17" y2="16"/></g>`); }
+function iconRain(){ return svg(`<path d="M6 15a5 5 0 0 1-.6-10A6 6 0 0 1 17 4.8 4.6 4.6 0 0 1 18 14H6z" fill="#c9cfd6"/><g stroke="#6fa8b5" stroke-width="1.6" stroke-linecap="round"><line x1="8" y1="18" x2="7" y2="21.5"/><line x1="13" y1="18" x2="12" y2="21.5"/><line x1="18" y1="18" x2="17" y2="21.5"/></g>`); }
+function iconSnow(){ return svg(`<path d="M6 14a5 5 0 0 1-.6-10A6 6 0 0 1 17 3.8 4.6 4.6 0 0 1 18 13H6z" fill="#c9cfd6"/><g stroke="#eef1ee" stroke-width="1.6" stroke-linecap="round"><line x1="8" y1="17" x2="8" y2="22"/><line x1="6" y1="19.5" x2="10" y2="19.5"/><line x1="16" y1="17" x2="16" y2="22"/><line x1="14" y1="19.5" x2="18" y2="19.5"/></g>`); }
+function iconStorm(){ return svg(`<path d="M6 13a5 5 0 0 1-.6-10A6 6 0 0 1 17 2.8 4.6 4.6 0 0 1 18 12H6z" fill="#8b93a0"/><path d="M13 12l-3.5 6h3L11 22l5-7h-3.5z" fill="#e8a33d"/>`); }
+
+function weatherDesc(code){
+  const c = Number(code);
+  const map = {
+    0:'helder', 1:'overwegend zonnig', 2:'half bewolkt', 3:'bewolkt',
+    45:'mist', 48:'aanvriezende mist',
+    51:'lichte motregen', 53:'motregen', 55:'dichte motregen',
+    56:'ijzel', 57:'dichte ijzel',
+    61:'lichte regen', 63:'regen', 65:'zware regen',
+    66:'ijzelregen', 67:'zware ijzelregen',
+    71:'lichte sneeuw', 73:'sneeuw', 75:'zware sneeuw', 77:'sneeuwkorrels',
+    80:'lichte buien', 81:'buien', 82:'zware buien',
+    85:'sneeuwbuien', 86:'zware sneeuwbuien',
+    95:'onweer', 96:'onweer met hagel', 99:'zwaar onweer met hagel'
+  };
+  return map[c] || 'onbekend';
+}
+
+const DOW = ['zo','ma','di','wo','do','vr','za'];
+function dayLabel(dateStr, idx){
+  if(idx === 0) return 'vandaag';
+  const d = new Date(dateStr + 'T00:00:00');
+  return DOW[d.getDay()];
+}
+
+function zonScore(w){
+  if(!w) return -999;
+  // higher temp and lower cloud cover = better; clear/sunny codes get a boost
+  const codeBonus = [0,1].includes(Number(w.code)) ? 8 : ([2].includes(Number(w.code)) ? 3 : 0);
+  return (w.temp * 1.5) - (w.cloud * 0.25) + codeBonus;
+}
+
+async function geocode(name){
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&language=nl&format=json`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if(!data.results || data.results.length === 0) return null;
+  const r = data.results[0];
+  return { name: r.name, lat: r.latitude, lon: r.longitude, admin: r.admin1 || '', country: r.country || '' };
+}
+
+async function fetchWeather(city){
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_mean&forecast_days=10&timezone=auto`;
+  const res = await fetch(url);
+  const data = await res.json();
+  const cur = data.current;
+  const daily = data.daily;
+  const forecast = (daily && daily.time) ? daily.time.map((date, i) => ({
+    date,
+    code: daily.weather_code[i],
+    tmax: Math.round(daily.temperature_2m_max[i]),
+    tmin: Math.round(daily.temperature_2m_min[i]),
+    rain: daily.precipitation_probability_mean ? daily.precipitation_probability_mean[i] : 0
+  })) : [];
+  return {
+    temp: Math.round(cur.temperature_2m),
+    cloud: cur.cloud_cover,
+    code: cur.weather_code,
+    isDay: cur.is_day === 1,
+    forecast
+  };
+}
+
+function render(){
+  // chips
+  chipsEl.innerHTML = cities.map(c => `
+    <span class="chip" data-id="${c.id}">
+      ${c.name}${c.country ? ', ' + c.country : ''}
+      <button class="remove-btn" data-remove="${c.id}" title="Verwijderen">&times;</button>
+    </span>
+  `).join('');
+
+  if(cities.length === 0){
+    listEl.innerHTML = `<div class="empty">Nog geen steden toegevoegd. Open het menu linksboven om een stad toe te voegen.</div>`;
+    return;
+  }
+
+  const sorted = [...cities].sort((a,b) => zonScore(weatherData[a.id]) - zonScore(weatherData[b.id])).reverse();
+
+  listEl.innerHTML = `<div class="rank-list">` + sorted.map((c, i) => {
+    const w = weatherData[c.id];
+    if(!w){
+      return `
+        <div class="rank-block">
+          <div class="rank-row">
+            <div class="rank-num">${i+1}</div>
+            <div></div>
+            <div class="rank-city"><div class="name">${c.name}</div><div class="desc">laden…</div></div>
+            <div class="rank-detail"></div>
+            <div class="rank-temp">—</div>
+          </div>
+        </div>`;
+    }
+    const strip = (w.forecast || []).map((d, idx) => `
+      <div class="forecast-day" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag">
+        <div class="dow">${dayLabel(d.date, idx)}</div>
+        ${weatherIcon(d.code, true).replace('rank-icon','fc-icon')}
+        <div class="tmax">${d.tmax}°</div>
+        <div class="tmin">${d.tmin}°</div>
+        <div class="rainbar"><span style="width:${Math.min(100, d.rain)}%"></span></div>
+        <div class="rainpct">${d.rain}%</div>
+      </div>`).join('');
+    return `
+      <div class="rank-block">
+        <div class="rank-row">
+          <div class="rank-num">${i+1}</div>
+          <div>${weatherIcon(w.code, w.isDay)}</div>
+          <div class="rank-city">
+            <div class="name">${c.name}${c.country ? ', ' + c.country : ''}</div>
+            <div class="desc">${weatherDesc(w.code)}</div>
+          </div>
+          <div class="rank-detail">bewolking ${w.cloud}%</div>
+          <div class="rank-temp">${w.temp}°</div>
+        </div>
+        <div class="forecast-strip">${strip}</div>
+      </div>`;
+  }).join('') + `</div>`;
+}
+
+async function refreshWeatherFor(city){
+  try{
+    weatherData[city.id] = await fetchWeather(city);
+  }catch(e){
+    // leave missing; row shows "laden…" state won't resolve, acceptable fallback
+  }
+}
+
+async function refreshAll(){
+  if(cities.length === 0){ render(); return; }
+  setStatus('Weer wordt opgehaald…');
+  render();
+  await Promise.all(cities.map(refreshWeatherFor));
+  render();
+  updatedEl.textContent = new Date().toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit'});
+  setStatus('');
+}
+
+async function addCity(city){
+  if(cities.some(c => c.id === city.id)){
+    setStatus(`${city.name} staat al in je lijst.`, true);
+    return false;
+  }
+  cities.push(city);
+  saveCities();
+  render();
+  await refreshWeatherFor(city);
+  render();
+  updatedEl.textContent = new Date().toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit'});
+  return true;
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = input.value.trim();
+  if(!name) return;
+  addBtn.disabled = true;
+  setStatus(`${name} opzoeken…`);
+  try{
+    const geo = await geocode(name);
+    if(!geo){
+      setStatus(`Kon "${name}" niet vinden. Probeer een andere schrijfwijze.`, true);
+      addBtn.disabled = false;
+      return;
+    }
+    const id = `${geo.lat.toFixed(2)}_${geo.lon.toFixed(2)}`;
+    const city = { id, ...geo };
+    setStatus('');
+    input.value = '';
+    await addCity(city);
+  }catch(err){
+    setStatus('Er ging iets mis bij het ophalen van gegevens.', true);
+  }
+  addBtn.disabled = false;
+});
+
+regionForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const query = regionInput.value.trim();
+  if(!query){ regionResultsEl.innerHTML = ''; return; }
+  const hits = searchCitiesByRegion(query);
+  if(hits.length === 0){
+    regionResultsEl.innerHTML = `<div class="region-results"><div class="region-empty">Geen grotere steden gevonden voor "${query}". Probeer een landnaam of een bekende regio (bv. Andalusië, Beieren, Toscane).</div></div>`;
+    return;
+  }
+  regionResultsEl.innerHTML = `<div class="region-results">` + hits.map(h => {
+    const id = `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}`;
+    const already = cities.some(c => c.id === id);
+    return `
+      <div class="region-hit">
+        <div>
+          <div class="rh-name">${h.n}</div>
+          <div class="rh-meta">${h.r}, ${h.c} · ${Math.round(h.pop/1000)}k inwoners</div>
+        </div>
+        <button class="rh-add" data-region-add="${id}" ${already ? 'disabled' : ''}>${already ? 'Toegevoegd' : '+ Toevoegen'}</button>
+      </div>`;
+  }).join('') + `</div>`;
+});
+
+regionResultsEl.addEventListener('click', async (e) => {
+  const id = e.target.getAttribute('data-region-add');
+  if(!id) return;
+  const hit = EU_CITIES.find(h => `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}` === id);
+  if(!hit) return;
+  e.target.disabled = true;
+  const city = { id, name: hit.n, lat: hit.lat, lon: hit.lon, admin: hit.r, country: hit.c };
+  await addCity(city);
+  e.target.textContent = 'Toegevoegd';
+});
+
+chipsEl.addEventListener('click', (e) => {
+  const id = e.target.getAttribute('data-remove');
+  if(!id) return;
+  cities = cities.filter(c => c.id !== id);
+  delete weatherData[id];
+  saveCities();
+  render();
+});
+
+(async function init(){
+  await loadCities();
+  render();
+  if(cities.length > 0){
+    await refreshAll();
+  }else{
+    openSidebar();
+  }
+  // auto-refresh every 10 minutes
+  setInterval(refreshAll, 10 * 60 * 1000);
+})();
+</script>
+</body>
+</html>
