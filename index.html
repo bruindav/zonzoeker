@@ -284,6 +284,24 @@
     padding: 3px 8px;
   }
   .city-tooltip::before{ display:none; }
+  .leaflet-div-icon.score-marker{
+    background: transparent;
+    border: none;
+  }
+  .score-marker-inner{
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color: #0e1728;
+    font-weight: 700;
+    font-size: 0.75rem;
+    font-family: 'Inter', sans-serif;
+    border: 2px solid #0e1728;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
 
   .overlay{
     position: fixed;
@@ -1362,15 +1380,20 @@ function updateRadarMarkers(){
   radarMarkers.forEach(m => radarMap.removeLayer(m));
   radarMarkers = [];
   const cities = currentList().cities;
+  const sorted = [...cities].sort((a,b) => zonScore(weatherData[a.id]) - zonScore(weatherData[b.id])).reverse();
   const pts = cities.map(c => [c.lat, c.lon]);
-  cities.forEach(c => {
+  sorted.forEach((c, i) => {
     const w = weatherData[c.id];
     const score = w ? zonScore(w) : undefined;
     const color = scoreColor(score);
-    const tooltipText = w ? `${c.name} — ${weatherDesc(w.code)}, ${w.temp}°` : `${c.name} — laden…`;
-    const marker = L.circleMarker([c.lat, c.lon], {
-      radius: 8, color: '#0e1728', weight: 2, fillColor: color, fillOpacity: 0.9
-    }).bindTooltip(tooltipText, { direction: 'top', offset: [0, -6], className: 'city-tooltip' });
+    const icon = L.divIcon({
+      className: 'score-marker',
+      html: `<div class="score-marker-inner" style="background:${color}">${i + 1}</div>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
+    });
+    const tooltipText = w ? `${i + 1}. ${c.name} — ${weatherDesc(w.code)}, ${w.temp}°` : `${c.name} — laden…`;
+    const marker = L.marker([c.lat, c.lon], { icon }).bindTooltip(tooltipText, { direction: 'top', offset: [0, -14], className: 'city-tooltip' });
     marker.addTo(radarMap);
     radarMarkers.push(marker);
   });
