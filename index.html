@@ -310,6 +310,34 @@
     margin: 0 0 20px;
   }
   .sidebar-current{ margin-top: 22px; }
+
+  .ref-section{
+    margin: 4px 0 22px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .ref-current{
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    margin: 6px 0 10px;
+    line-height:1.4;
+  }
+  .ref-btn{
+    width:100%;
+    background: rgba(238,241,238,0.05);
+    border: 1px solid var(--line);
+    color: var(--paper);
+    border-radius: 8px;
+    padding: 9px;
+    font-size: 0.85rem;
+    font-family:'Inter',sans-serif;
+    cursor:pointer;
+    margin-bottom: 8px;
+  }
+  .ref-btn:hover{ background: rgba(238,241,238,0.1); }
+  .ref-btn:disabled{ opacity:0.5; cursor:default; }
+  .ref-form{ margin: 0 0 10px; }
+  .nearby-btn{ margin-top: 2px; }
   .sidebar-subhead{
     display:block;
     font-size: 0.78rem;
@@ -463,6 +491,11 @@
     padding: 8px 2px 6px;
     border-radius: 8px;
     background: rgba(238,241,238,0.04);
+    border: 1.5px solid transparent;
+  }
+  .forecast-day.best-day{
+    border-color: var(--gold);
+    background: rgba(232,163,61,0.12);
   }
   .forecast-day .dow{
     font-size: 0.68rem;
@@ -595,6 +628,18 @@
     <button class="close-btn" id="closeSidebar" aria-label="Sluiten">&times;</button>
   </div>
   <p class="sidebar-intro">Voeg steden toe of zoek grotere steden per regio. Ze verschijnen op de hoofdpagina, bovenaan de stad met de beste vooruitzichten: veel zon en weinig regen in de komende dagen.</p>
+
+  <div class="ref-section">
+    <span class="sidebar-subhead">Vertrekpunt (voor afstand &amp; buurt)</span>
+    <div class="ref-current" id="refCurrent">Niet ingesteld — afstand tot steden wordt dan niet getoond.</div>
+    <button class="ref-btn" id="useLocationBtn">📍 Gebruik mijn locatie</button>
+    <form class="add-city ref-form" id="refForm">
+      <input type="text" id="refInput" placeholder="Of typ een vertrekplaats" autocomplete="off">
+      <button type="submit" id="refBtn">Zet</button>
+    </form>
+    <button class="ref-btn nearby-btn" id="nearbyBtn">Zoek grotere steden binnen 150 km</button>
+    <div id="nearbyResults"></div>
+  </div>
 
   <form class="add-city" id="addForm">
     <input type="text" id="cityInput" placeholder="Voeg een stad toe, bv. Sevilla" autocomplete="off">
@@ -808,6 +853,67 @@ function searchCitiesByRegion(query, limit = 8){
     .slice(0, limit);
 }
 
+// ---- Vertrekpunt & afstand ----
+let refPoint = null; // { name, lat, lon }
+let routeCache = {}; // "reflat_reflon_cityId" -> { km, minutes, estimated } | null (pending)
+const REF_STORAGE_KEY = 'zonzoeker:refPoint';
+
+function haversineKm(lat1, lon1, lat2, lon2){
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function estimateRoute(from, to){
+  const km = Math.round(haversineKm(from.lat, from.lon, to.lat, to.lon) * 1.2);
+  const minutes = Math.round(km / 80 * 60);
+  return { km, minutes, estimated: true };
+}
+
+async function fetchDrivingRoute(from, to){
+  try{
+    const url = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if(data.code === 'Ok' && data.routes && data.routes[0]){
+      return { km: Math.round(data.routes[0].distance / 1000), minutes: Math.round(data.routes[0].duration / 60), estimated: false };
+    }
+  }catch(e){ /* fall through to estimate */ }
+  return null;
+}
+
+function formatMinutes(min){
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h > 0 ? `${h}u${String(m).padStart(2,'0')}` : `${m} min`;
+}
+
+function routeKey(city){
+  return `${refPoint.lat.toFixed(2)}_${refPoint.lon.toFixed(2)}_${city.id}`;
+}
+
+async function ensureRoute(city){
+  if(!refPoint) return;
+  const key = routeKey(city);
+  if(routeCache[key] !== undefined) return;
+  routeCache[key] = null;
+  let result = await fetchDrivingRoute(refPoint, city);
+  if(!result) result = estimateRoute(refPoint, city);
+  routeCache[key] = result;
+  render();
+}
+
+function searchCitiesNearby(radiusKm = 150, limit = 8){
+  if(!refPoint) return [];
+  return EU_CITIES
+    .map(c => ({ ...c, dist: haversineKm(refPoint.lat, refPoint.lon, c.lat, c.lon) }))
+    .filter(c => c.dist <= radiusKm)
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, limit);
+}
+
 const chipsEl = document.getElementById('chips');
 const listEl = document.getElementById('list');
 const statusEl = document.getElementById('status');
@@ -819,6 +925,13 @@ const regionForm = document.getElementById('regionForm');
 const regionInput = document.getElementById('regionInput');
 const regionBtn = document.getElementById('regionBtn');
 const regionResultsEl = document.getElementById('regionResults');
+const refCurrentEl = document.getElementById('refCurrent');
+const useLocationBtn = document.getElementById('useLocationBtn');
+const refForm = document.getElementById('refForm');
+const refInput = document.getElementById('refInput');
+const refBtn = document.getElementById('refBtn');
+const nearbyBtn = document.getElementById('nearbyBtn');
+const nearbyResultsEl = document.getElementById('nearbyResults');
 const sidebar = document.getElementById('sidebar');
 const overlay = document.getElementById('overlay');
 const openSidebarBtn = document.getElementById('openSidebar');
@@ -1046,8 +1159,19 @@ function render(){
           </div>
         </div>`;
     }
+    let route;
+    if(refPoint){
+      const key = routeKey(c);
+      route = routeCache[key];
+      if(route === undefined) ensureRoute(c);
+    }
+    const distText = refPoint
+      ? (route ? ` · ${route.km} km · ${formatMinutes(route.minutes)}${route.estimated ? ' (schatting)' : ''}` : ' · afstand laden…')
+      : '';
+    const scores = (w.forecast || []).map(d => dayWeatherScore(d));
+    const bestIdx = scores.length ? scores.indexOf(Math.max(...scores)) : -1;
     const strip = (w.forecast || []).map((d, idx) => `
-      <div class="forecast-day" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag">
+      <div class="forecast-day ${idx === bestIdx ? 'best-day' : ''}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${idx === bestIdx ? ' — beste dag' : ''}">
         <div class="dow">${dayLabel(d.date, idx)}</div>
         ${weatherIcon(d.code, true).replace('rank-icon','fc-icon')}
         <div class="tmax">${d.tmax}°</div>
@@ -1062,7 +1186,7 @@ function render(){
           <div>${weatherIcon(w.code, w.isDay)}</div>
           <div class="rank-city">
             <div class="name">${c.name}${c.country ? ', ' + c.country : ''}</div>
-            <div class="desc">${weatherDesc(w.code)}</div>
+            <div class="desc">${weatherDesc(w.code)}${distText}</div>
           </div>
           <div class="rank-detail">bewolking ${w.cloud}%</div>
           <div class="rank-temp">${w.temp}°</div>
@@ -1310,6 +1434,107 @@ regionResultsEl.addEventListener('click', async (e) => {
   e.target.textContent = 'Toegevoegd';
 });
 
+function loadRefPoint(){
+  try{
+    const raw = localStorage.getItem(REF_STORAGE_KEY);
+    if(raw) refPoint = JSON.parse(raw);
+  }catch(e){ /* ignore */ }
+}
+function saveRefPoint(){
+  try{ localStorage.setItem(REF_STORAGE_KEY, JSON.stringify(refPoint)); }catch(e){ /* ignore */ }
+}
+function renderRefPoint(){
+  refCurrentEl.textContent = refPoint
+    ? `📍 ${refPoint.name}`
+    : 'Niet ingesteld — afstand tot steden wordt dan niet getoond.';
+}
+function setRefPoint(point){
+  refPoint = point;
+  routeCache = {};
+  saveRefPoint();
+  renderRefPoint();
+  render();
+}
+
+useLocationBtn.addEventListener('click', () => {
+  if(!navigator.geolocation){
+    setStatus('Locatie wordt niet ondersteund door deze browser.', true);
+    return;
+  }
+  useLocationBtn.disabled = true;
+  useLocationBtn.textContent = 'Locatie ophalen…';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      setRefPoint({ name: 'Mijn locatie', lat: pos.coords.latitude, lon: pos.coords.longitude });
+      useLocationBtn.disabled = false;
+      useLocationBtn.textContent = '📍 Gebruik mijn locatie';
+    },
+    () => {
+      setStatus('Kon je locatie niet ophalen. Typ eventueel een vertrekplaats.', true);
+      useLocationBtn.disabled = false;
+      useLocationBtn.textContent = '📍 Gebruik mijn locatie';
+    },
+    { enableHighAccuracy: false, timeout: 10000 }
+  );
+});
+
+refForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = refInput.value.trim();
+  if(!name) return;
+  refBtn.disabled = true;
+  setStatus(`${name} opzoeken…`);
+  try{
+    const geo = await geocode(name);
+    if(!geo){
+      setStatus(`Kon "${name}" niet vinden.`, true);
+      refBtn.disabled = false;
+      return;
+    }
+    setStatus('');
+    refInput.value = '';
+    setRefPoint({ name: geo.name, lat: geo.lat, lon: geo.lon });
+  }catch(err){
+    setStatus('Er ging iets mis bij het ophalen van gegevens.', true);
+  }
+  refBtn.disabled = false;
+});
+
+nearbyBtn.addEventListener('click', () => {
+  if(!refPoint){
+    setStatus('Stel eerst een vertrekpunt in om steden in de buurt te vinden.', true);
+    return;
+  }
+  const hits = searchCitiesNearby(150);
+  if(hits.length === 0){
+    nearbyResultsEl.innerHTML = `<div class="region-results"><div class="region-empty">Geen grotere steden gevonden binnen 150 km van ${refPoint.name}.</div></div>`;
+    return;
+  }
+  nearbyResultsEl.innerHTML = `<div class="region-results">` + hits.map(h => {
+    const id = `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}`;
+    const already = currentList().cities.some(c => c.id === id);
+    return `
+      <div class="region-hit">
+        <div>
+          <div class="rh-name">${h.n}</div>
+          <div class="rh-meta">${Math.round(h.dist)} km · ${h.r}, ${h.c}</div>
+        </div>
+        <button class="rh-add" data-nearby-add="${id}" ${already ? 'disabled' : ''}>${already ? 'Toegevoegd' : '+ Toevoegen'}</button>
+      </div>`;
+  }).join('') + `</div>`;
+});
+
+nearbyResultsEl.addEventListener('click', async (e) => {
+  const id = e.target.getAttribute('data-nearby-add');
+  if(!id) return;
+  const hit = EU_CITIES.find(h => `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}` === id);
+  if(!hit) return;
+  e.target.disabled = true;
+  const city = { id, name: hit.n, lat: hit.lat, lon: hit.lon, admin: hit.r, country: hit.c };
+  await addCity(city);
+  e.target.textContent = 'Toegevoegd';
+});
+
 chipsEl.addEventListener('click', (e) => {
   const id = e.target.getAttribute('data-remove');
   if(!id) return;
@@ -1321,6 +1546,8 @@ chipsEl.addEventListener('click', (e) => {
 
 (async function init(){
   await loadCities();
+  loadRefPoint();
+  renderRefPoint();
   renderTabs();
   render();
   let helpSeen = false;
