@@ -741,6 +741,41 @@
   .hour-row .hour-desc{ color: var(--text-dim); font-size: 0.8rem; }
   .hour-row .hour-temp{ font-weight:600; text-align:right; }
   .hour-row .hour-rain{ color: var(--cool); font-size: 0.8rem; text-align:right; white-space:nowrap; }
+
+  .rain-chart{
+    display:flex;
+    align-items:flex-end;
+    gap: 6px;
+    padding: 4px 2px 16px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .rain-col{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap: 6px;
+    cursor:pointer;
+  }
+  .rain-col-track{
+    width:100%;
+    height: 90px;
+    display:flex;
+    align-items:flex-end;
+    background: rgba(238,241,238,0.03);
+    border-radius: 4px;
+    overflow:hidden;
+  }
+  .rain-col-bar{
+    width:100%;
+    border-radius: 3px 3px 0 0;
+    transition: height 0.2s;
+  }
+  .rain-col-time{
+    font-size: 0.65rem;
+    color: var(--text-dim);
+  }
   .fc-warn{
     position:absolute;
     top: 2px;
@@ -895,7 +930,7 @@
     </div>
     <div class="help-item">
       <strong>Uur-tot-uur en waarschuwingen</strong>
-      <p>Tik op een dagvakje voor het weer per uur tussen 10:00-17:00. De icoontjes ⚡ (onweer), 💨 (harde wind) en ❔ (weermodellen zijn het oneens) kun je ook aantikken voor details.</p>
+      <p>Tik op een dagvakje voor het weer per uur tussen 10:00-17:00, met een regengrafiek (mm per uur, zoals bij Buienradar) bovenaan. De icoontjes ⚡ (onweer), 💨 (harde wind) en ❔ (weermodellen zijn het oneens) kun je ook aantikken voor details.</p>
     </div>
     <div class="help-item">
       <strong>Radar</strong>
@@ -1420,9 +1455,34 @@ function isBadHour(h){
   return badHourSeverity(h) > 0;
 }
 
+function precipBarColor(mm){
+  if(mm <= 0) return 'rgba(238,241,238,0.1)';
+  if(mm < 0.5) return '#6fa8b5';
+  if(mm < 2) return '#3f7fa3';
+  if(mm < 5) return '#5a4fb8';
+  return '#8b2fd4';
+}
+
+function buildRainChart(hours){
+  if(!hours || hours.length === 0) return '';
+  const RAIN_SCALE_MAX = 5; // mm/u waarbij een staaf de volle hoogte bereikt
+  const bars = hours.map(h => {
+    const mm = h.precip || 0;
+    const pct = Math.max(mm > 0 ? 6 : 2, Math.min(100, (mm / RAIN_SCALE_MAX) * 100));
+    const label = mm > 0 ? `${mm.toFixed(1)} mm` : 'droog';
+    return `
+      <div class="rain-col" data-detail="${String(h.hour).padStart(2,'0')}:00 — ${label}" title="${String(h.hour).padStart(2,'0')}:00 — ${label}">
+        <div class="rain-col-track"><div class="rain-col-bar" style="height:${pct}%; background:${precipBarColor(mm)}"></div></div>
+        <span class="rain-col-time">${h.hour}u</span>
+      </div>`;
+  }).join('');
+  return `<div class="rain-chart">${bars}</div>`;
+}
+
 function openHourModal(cityId, day){
   const city = findRenderedCityById(cityId);
   hourModalTitleEl.textContent = `${city ? city.name + ' — ' : ''}${formatFullDate(day.date)}`;
+  const chart = buildRainChart(day.hours);
   const rows = (day.hours || []).map(h => {
     const sev = badHourSeverity(h);
     const sevLabel = sev === 3 ? 'ver onder je norm' : sev === 2 ? 'redelijk onder je norm' : sev === 1 ? 'net onder je norm' : '';
@@ -1435,13 +1495,17 @@ function openHourModal(cityId, day){
       <span class="hour-temp">${h.temp !== null ? h.temp + '°' : '—'}</span>
     </div>`;
   }).join('');
-  hourModalBodyEl.innerHTML = rows || `<p class="sidebar-intro">Geen uurgegevens beschikbaar.</p>`;
+  hourModalBodyEl.innerHTML = chart + (rows || `<p class="sidebar-intro">Geen uurgegevens beschikbaar.</p>`);
   hourOverlay.classList.add('open');
 }
 function closeHourModal(){
   hourOverlay.classList.remove('open');
 }
 closeHourModalBtn.addEventListener('click', closeHourModal);
+hourModalBodyEl.addEventListener('click', (e) => {
+  const col = e.target.closest('.rain-col');
+  if(col) showToast(col.getAttribute('data-detail'));
+});
 
 let toastTimer = null;
 function showToast(msg){
@@ -1693,14 +1757,14 @@ function bucketDaytimeHours(hourly, fields){
 }
 
 async function fetchWeather(city){
-  const primaryUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m&forecast_days=10&timezone=auto`;
+  const primaryUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m&forecast_days=10&timezone=auto`;
   const altUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=weather_code,precipitation_probability&models=ecmwf_ifs025&forecast_days=10&timezone=auto`;
 
   const res = await fetch(primaryUrl);
   const data = await res.json();
   const cur = data.current;
 
-  const byDate = bucketDaytimeHours(data.hourly, ['temperature_2m', 'precipitation_probability', 'weather_code', 'wind_speed_10m']);
+  const byDate = bucketDaytimeHours(data.hourly, ['temperature_2m', 'precipitation_probability', 'precipitation', 'weather_code', 'wind_speed_10m']);
 
   let altByDate = {};
   try{
@@ -1715,6 +1779,7 @@ async function fetchWeather(city){
     const b = byDate[date];
     const temps = b.temperature_2m || [];
     const rains = b.precipitation_probability || [];
+    const precips = b.precipitation || [];
     const winds = b.wind_speed_10m || [];
     const codes = b.weather_code || [];
     const tmax = temps.length ? Math.round(Math.max(...temps)) : null;
@@ -1727,6 +1792,7 @@ async function fetchWeather(city){
       hour: h,
       temp: temps[hi] !== undefined ? Math.round(temps[hi]) : null,
       rain: rains[hi] !== undefined ? rains[hi] : 0,
+      precip: precips[hi] !== undefined ? precips[hi] : 0,
       wind: winds[hi] !== undefined ? Math.round(winds[hi]) : null,
       code: codes[hi]
     }));
