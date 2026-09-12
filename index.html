@@ -1522,7 +1522,7 @@ function saveBadWeather(){
 function isBadDay(d){
   return d.rain >= badWeather.rainPct
     || d.rainHours >= badWeather.rainHours
-    || d.tmin < badWeather.minTemp
+    || d.tmax < badWeather.minTemp
     || d.tmax > badWeather.maxTemp
     || d.wind >= badWeather.windKmh;
 }
