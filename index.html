@@ -922,7 +922,7 @@
     </div>
     <div class="help-item">
       <strong>In de buurt</strong>
-      <p>Zodra een vertrekpunt is ingesteld, verschijnt automatisch een tab "📍 In de buurt" — grotere steden binnen jouw reisafstand, zonder dat je zelf iets hoeft te zoeken.</p>
+      <p>Zodra een vertrekpunt is ingesteld, verschijnt automatisch een tab "📍 In de buurt" — grotere steden binnen jouw reisafstand. Ligt er in een bepaalde richting geen grote stad, dan vult Zonzoeker die aan met een punt op de kaart (bv. "Noordoost"), zodat je altijd het weer in alle richtingen kunt vergelijken.</p>
     </div>
     <div class="help-item">
       <strong>Eigen groepen</strong>
@@ -1112,13 +1112,15 @@ let weatherData = {}; // cityId -> {temp, cloud, code, isDay, forecast} — shar
 
 function buildNearbyList(){
   const hits = refPoint ? searchCitiesNearby(travelRadius) : [];
+  const fillPoints = refPoint ? compassFillPoints(travelRadius, hits) : [];
+  const cityEntries = hits.map(h => ({
+    id: `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}`,
+    name: h.n, lat: h.lat, lon: h.lon, admin: h.r, country: h.c
+  }));
   return {
     id: NEARBY_LIST_ID,
     name: refPoint ? `In de buurt van ${refPoint.name} (${travelRadius} km)` : 'In de buurt',
-    cities: hits.map(h => ({
-      id: `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}`,
-      name: h.n, lat: h.lat, lon: h.lon, admin: h.r, country: h.c
-    }))
+    cities: [...cityEntries, ...fillPoints]
   };
 }
 
@@ -1355,6 +1357,58 @@ function searchCitiesNearby(radiusKm = 250, limit = 10){
     .slice(0, limit);
 }
 
+// ---- Windrichting-dekking: zorgt dat elke richting rondom het vertrekpunt
+// een stad heeft, ook als er in de curated lijst geen grote stad in ligt. ----
+const COMPASS_DIRS = [
+  { deg: 0, label: 'Noord' }, { deg: 45, label: 'Noordoost' },
+  { deg: 90, label: 'Oost' }, { deg: 135, label: 'Zuidoost' },
+  { deg: 180, label: 'Zuid' }, { deg: 225, label: 'Zuidwest' },
+  { deg: 270, label: 'West' }, { deg: 315, label: 'Noordwest' }
+];
+
+function bearingDeg(lat1, lon1, lat2, lon2){
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function destinationPoint(lat, lon, bearing, distanceKm){
+  const R = 6371;
+  const δ = distanceKm / R;
+  const θ = bearing * Math.PI / 180;
+  const φ1 = lat * Math.PI / 180;
+  const λ1 = lon * Math.PI / 180;
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
+  const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
+  return { lat: φ2 * 180 / Math.PI, lon: ((λ2 * 180 / Math.PI) + 540) % 360 - 180 };
+}
+
+function compassFillPoints(radiusKm, cityHits){
+  if(!refPoint) return [];
+  const covered = new Set();
+  cityHits.forEach(c => {
+    const b = bearingDeg(refPoint.lat, refPoint.lon, c.lat, c.lon);
+    COMPASS_DIRS.forEach((d, idx) => {
+      const diff = Math.min(Math.abs(b - d.deg), 360 - Math.abs(b - d.deg));
+      if(diff <= 22.5) covered.add(idx);
+    });
+  });
+  const points = [];
+  COMPASS_DIRS.forEach((d, idx) => {
+    if(covered.has(idx)) return;
+    const dist = Math.round(radiusKm * 0.7);
+    const dest = destinationPoint(refPoint.lat, refPoint.lon, d.deg, dist);
+    points.push({
+      id: `dir_${d.label}_${dest.lat.toFixed(2)}_${dest.lon.toFixed(2)}`,
+      name: d.label, lat: dest.lat, lon: dest.lon,
+      admin: `${dist} km hemelsbreed`, country: '', _isDirectional: true
+    });
+  });
+  return points;
+}
+
 const chipsEl = document.getElementById('chips');
 const listEl = document.getElementById('list');
 listEl.addEventListener('click', (e) => {
@@ -1573,6 +1627,7 @@ hourOverlay.addEventListener('click', (e) => { if(e.target === hourOverlay) clos
 function openSidebar(){
   sidebar.classList.add('open');
   overlay.classList.add('open');
+  if(radarOpen) closeRadarPanel();
 }
 function closeSidebar(){
   sidebar.classList.remove('open');
@@ -2116,6 +2171,14 @@ function updateRadarMarkers(){
   }else if(pts.length > 1){
     radarMap.fitBounds(pts, { padding: [30, 30] });
   }
+}
+
+function closeRadarPanel(){
+  radarOpen = false;
+  radarPanelEl.classList.remove('open');
+  radarToggleBtn.classList.remove('active');
+  radarToggleBtn.textContent = 'Radar tonen';
+  stopRadar();
 }
 
 radarToggleBtn.addEventListener('click', async () => {
