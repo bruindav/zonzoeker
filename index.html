@@ -361,6 +361,14 @@
     border: 2px solid #0e1728;
     box-shadow: 0 1px 4px rgba(0,0,0,0.4);
   }
+  .score-marker-inner.ref-marker-inner{
+    width: 30px;
+    height: 30px;
+    font-size: 0.62rem;
+    gap: 1px;
+    border: 2px solid var(--cool);
+    box-shadow: 0 0 0 2px rgba(111,168,181,0.35), 0 1px 4px rgba(0,0,0,0.4);
+  }
 
   .overlay{
     position: fixed;
@@ -2083,20 +2091,22 @@ function updateRadarMarkers(){
   if(!radarMap) return;
   radarMarkers.forEach(m => radarMap.removeLayer(m));
   radarMarkers = [];
-  const cities = currentList().cities;
+  const rc = refPointCity();
+  const cities = rc ? [...currentList().cities, rc] : [...currentList().cities];
   const sorted = [...cities].sort((a,b) => zonScore(weatherData[a.id]) - zonScore(weatherData[b.id])).reverse();
   const pts = cities.map(c => [c.lat, c.lon]);
   sorted.forEach((c, i) => {
     const w = weatherData[c.id];
     const score = w ? zonScore(w) : undefined;
     const color = scoreColor(score);
+    const size = c._isRef ? 30 : 26;
     const icon = L.divIcon({
       className: 'score-marker',
-      html: `<div class="score-marker-inner" style="background:${color}">${i + 1}</div>`,
-      iconSize: [26, 26],
-      iconAnchor: [13, 13]
+      html: `<div class="score-marker-inner ${c._isRef ? 'ref-marker-inner' : ''}" style="background:${color}">${c._isRef ? '📍' : ''}${i + 1}</div>`,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2]
     });
-    const tooltipText = w ? `${i + 1}. ${c.name} — ${weatherDesc(w.code)}, ${w.temp}°` : `${c.name} — laden…`;
+    const tooltipText = w ? `${i + 1}. ${c._isRef ? 'Vertrekpunt · ' : ''}${c.name} — ${weatherDesc(w.code)}, ${w.temp}°` : `${c.name} — laden…`;
     const marker = L.marker([c.lat, c.lon], { icon }).bindTooltip(tooltipText, { direction: 'top', offset: [0, -14], className: 'city-tooltip' });
     marker.addTo(radarMap);
     radarMarkers.push(marker);
