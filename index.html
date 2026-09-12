@@ -586,15 +586,10 @@
   .rank-list{
     border-top: 1px solid var(--line);
   }
-  .ref-list{
-    border: 1px solid rgba(111,168,181,0.35);
-    border-radius: 10px;
-    margin-bottom: 18px;
-    overflow: hidden;
-  }
-  .ref-block{
-    border-bottom: none !important;
-    background: rgba(111,168,181,0.07);
+  .rank-block.ref-block{
+    background: rgba(111,168,181,0.08);
+    border-left: 3px solid var(--cool);
+    padding-left: 8px;
   }
   .ref-block .rank-num{ color: var(--cool); }
   .rank-block{
@@ -1424,7 +1419,7 @@ function cityBlockHtml(c, w, rankLabel, extraClass){
         <div class="rank-num">${rankLabel}</div>
         <div>${weatherIcon(w.code, w.isDay)}</div>
         <div class="rank-city">
-          <div class="name">${c.name}${c.country ? ', ' + c.country : ''}</div>
+          <div class="name">${c._isRef ? '📍 ' : ''}${c.name}${c.country ? ', ' + c.country : ''}</div>
           <div class="desc">${c._isRef ? 'Vertrekpunt · ' : ''}${weatherDesc(w.code)}${distText}</div>
         </div>
         <div class="rank-detail">bewolking ${w.cloud}%</div>
@@ -1447,26 +1442,21 @@ function render(){
     </span>
   `).join('');
 
-  let refHtml = '';
-  if(refPoint){
-    const rc = refPointCity();
-    const w = weatherData[rc.id];
-    if(w === undefined) ensureRefWeather();
-    refHtml = `<div class="ref-list">${cityBlockHtml(rc, w, '📍', 'ref-block')}</div>`;
-  }
+  const rc = refPointCity();
+  if(rc && weatherData[rc.id] === undefined) ensureRefWeather();
 
-  if(list.cities.length === 0){
-    listEl.innerHTML = refHtml + `<div class="empty">Nog geen steden in "${list.name}". Open het menu linksboven om er een toe te voegen.</div>`;
+  const combined = rc ? [...list.cities, rc] : [...list.cities];
+
+  if(combined.length === 0){
+    listEl.innerHTML = `<div class="empty">Nog geen steden in "${list.name}". Open het menu linksboven om er een toe te voegen.</div>`;
     return;
   }
 
-  const sorted = [...list.cities].sort((a,b) => zonScore(weatherData[a.id]) - zonScore(weatherData[b.id])).reverse();
+  const sorted = [...combined].sort((a,b) => zonScore(weatherData[a.id]) - zonScore(weatherData[b.id])).reverse();
 
-  const rankHtml = `<div class="rank-list">` + sorted.map((c, i) =>
-    cityBlockHtml(c, weatherData[c.id], i + 1)
+  listEl.innerHTML = `<div class="rank-list">` + sorted.map((c, i) =>
+    cityBlockHtml(c, weatherData[c.id], i + 1, c._isRef ? 'ref-block' : '')
   ).join('') + `</div>`;
-
-  listEl.innerHTML = refHtml + rankHtml;
 }
 
 // ---- Radar map ----
