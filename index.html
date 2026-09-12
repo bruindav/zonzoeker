@@ -877,7 +877,7 @@
   </div>
 
   <div class="sidebar-panel" id="panelSettings" style="display:none;">
-    <p class="sidebar-intro">Stel in wat voor jou telt als slecht weer. Dagen die eraan voldoen krijgen een rode onderrand in de voorspelling.</p>
+    <p class="sidebar-intro">Stel in wat voor jou telt als slecht weer. Alle onderstaande criteria kijken alleen naar overdag (10:00–17:00), niet naar de nacht. Dagen die eraan voldoen krijgen een rode onderrand in de voorspelling.</p>
 
     <label class="setting-row">
       <span>Regenkans vanaf</span>
@@ -885,7 +885,7 @@
     </label>
     <label class="setting-row">
       <span>Regen minstens</span>
-      <span class="setting-input"><input type="number" id="setRainHours" min="0" max="24" step="1"> uur/dag</span>
+      <span class="setting-input"><input type="number" id="setRainHours" min="0" max="8" step="1"> uur (10-17u)</span>
     </label>
     <label class="setting-row">
       <span>Kouder dan</span>
@@ -1420,45 +1420,81 @@ function weatherCodeCategory(code){
   return 'nat';
 }
 
+const DAYTIME_START_HOUR = 10;
+const DAYTIME_END_HOUR = 17;
+
+function worstWeatherCode(codes){
+  let worst = codes[0];
+  let worstScore = SUN_SCORE_BY_CODE[Number(codes[0])] ?? -5;
+  for(const c of codes){
+    const s = SUN_SCORE_BY_CODE[Number(c)] ?? -5;
+    if(s < worstScore){ worstScore = s; worst = c; }
+  }
+  return worst;
+}
+
+function bucketDaytimeHours(hourly, fields){
+  const byDate = {};
+  if(!hourly || !hourly.time) return byDate;
+  hourly.time.forEach((t, i) => {
+    const hour = parseInt(t.slice(11, 13), 10);
+    if(hour < DAYTIME_START_HOUR || hour > DAYTIME_END_HOUR) return;
+    const date = t.slice(0, 10);
+    if(!byDate[date]) byDate[date] = {};
+    fields.forEach(f => {
+      if(!byDate[date][f]) byDate[date][f] = [];
+      if(hourly[f]) byDate[date][f].push(hourly[f][i]);
+    });
+  });
+  return byDate;
+}
+
 async function fetchWeather(city){
-  const primaryUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_mean,precipitation_hours,wind_speed_10m_max&forecast_days=10&timezone=auto`;
-  const altUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&daily=weather_code,precipitation_probability_mean&models=ecmwf_ifs025&forecast_days=10&timezone=auto`;
+  const primaryUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m&forecast_days=10&timezone=auto`;
+  const altUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=weather_code,precipitation_probability&models=ecmwf_ifs025&forecast_days=10&timezone=auto`;
 
   const res = await fetch(primaryUrl);
   const data = await res.json();
   const cur = data.current;
-  const daily = data.daily;
 
-  let altDaily = null;
+  const byDate = bucketDaytimeHours(data.hourly, ['temperature_2m', 'precipitation_probability', 'weather_code', 'wind_speed_10m']);
+
+  let altByDate = {};
   try{
     const altRes = await fetch(altUrl);
     const altData = await altRes.json();
-    if(altData && altData.daily) altDaily = altData.daily;
+    altByDate = bucketDaytimeHours(altData.hourly, ['weather_code', 'precipitation_probability']);
   }catch(e){ /* comparison model optional; skip silently on failure */ }
 
-  const forecast = (daily && daily.time) ? daily.time.map((date, i) => {
-    const code = daily.weather_code[i];
-    const rain = daily.precipitation_probability_mean ? daily.precipitation_probability_mean[i] : 0;
+  const dates = Object.keys(byDate).sort().slice(0, 10);
+
+  const forecast = dates.map(date => {
+    const b = byDate[date];
+    const temps = b.temperature_2m || [];
+    const rains = b.precipitation_probability || [];
+    const winds = b.wind_speed_10m || [];
+    const codes = b.weather_code || [];
+    const tmax = temps.length ? Math.round(Math.max(...temps)) : null;
+    const tmin = temps.length ? Math.round(Math.min(...temps)) : null;
+    const rain = rains.length ? Math.round(rains.reduce((a, x) => a + x, 0) / rains.length) : 0;
+    const rainHours = rains.filter(p => p >= 50).length;
+    const wind = winds.length ? Math.round(Math.max(...winds)) : 0;
+    const code = codes.length ? worstWeatherCode(codes) : 0;
+
     let uncertain = false, altCode, altRain;
-    if(altDaily && altDaily.weather_code && altDaily.weather_code[i] !== undefined){
-      altCode = altDaily.weather_code[i];
-      altRain = altDaily.precipitation_probability_mean ? altDaily.precipitation_probability_mean[i] : undefined;
+    const ab = altByDate[date];
+    if(ab && ab.weather_code && ab.weather_code.length){
+      altCode = worstWeatherCode(ab.weather_code);
+      const altRains = ab.precipitation_probability || [];
+      altRain = altRains.length ? Math.round(altRains.reduce((a, x) => a + x, 0) / altRains.length) : undefined;
       const categoryMismatch = weatherCodeCategory(code) !== weatherCodeCategory(altCode);
       const rainMismatch = (altRain !== undefined) && Math.abs(altRain - rain) >= 30;
       uncertain = categoryMismatch || rainMismatch;
     }
-    return {
-      date,
-      code,
-      tmax: Math.round(daily.temperature_2m_max[i]),
-      tmin: Math.round(daily.temperature_2m_min[i]),
-      rain,
-      rainHours: daily.precipitation_hours ? Math.round(daily.precipitation_hours[i]) : 0,
-      wind: daily.wind_speed_10m_max ? Math.round(daily.wind_speed_10m_max[i]) : 0,
-      uncertain,
-      altCode, altRain
-    };
-  }) : [];
+
+    return { date, code, tmax, tmin, rain, rainHours, wind, uncertain, altCode, altRain };
+  });
+
   return {
     temp: Math.round(cur.temperature_2m),
     cloud: cur.cloud_cover,
@@ -1470,7 +1506,7 @@ async function fetchWeather(city){
 
 // ---- Instelbaar: wat telt als "slecht weer" ----
 const BAD_WEATHER_KEY = 'zonzoeker:badWeather';
-const BAD_WEATHER_DEFAULTS = { rainPct: 50, rainHours: 18, minTemp: 10, maxTemp: 32, windKmh: 60 };
+const BAD_WEATHER_DEFAULTS = { rainPct: 50, rainHours: 6, minTemp: 10, maxTemp: 32, windKmh: 60 };
 let badWeather = { ...BAD_WEATHER_DEFAULTS };
 
 function loadBadWeather(){
@@ -1478,6 +1514,7 @@ function loadBadWeather(){
     const raw = localStorage.getItem(BAD_WEATHER_KEY);
     if(raw) badWeather = { ...BAD_WEATHER_DEFAULTS, ...JSON.parse(raw) };
   }catch(e){ /* ignore */ }
+  if(badWeather.rainHours > 8) badWeather.rainHours = 8;
 }
 function saveBadWeather(){
   try{ localStorage.setItem(BAD_WEATHER_KEY, JSON.stringify(badWeather)); }catch(e){ /* ignore */ }
