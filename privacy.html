@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zonzoeker — Privacy &amp; disclaimer</title>
+<meta name="theme-color" content="#16233a">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy: #16233a;
+    --navy-deep: #0e1728;
+    --paper: #eef1ee;
+    --gold: #e8a33d;
+    --gold-soft: #f3c878;
+    --line: rgba(238,241,238,0.14);
+    --text-dim: rgba(238,241,238,0.62);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background: var(--navy-deep);
+    color: var(--paper);
+    font-family:'Inter', sans-serif;
+    min-height:100vh;
+  }
+  .wrap{
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  a.back{
+    color: var(--gold-soft);
+    text-decoration:none;
+    font-size: 0.85rem;
+    font-weight:600;
+  }
+  a.back:hover{ text-decoration:underline; }
+  h1{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size: clamp(1.8rem, 6vw, 2.4rem);
+    margin: 20px 0 8px;
+    letter-spacing: -0.01em;
+  }
+  .updated{
+    color: var(--text-dim);
+    font-size: 0.82rem;
+    margin: 0 0 32px;
+  }
+  section{
+    margin-bottom: 26px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--line);
+  }
+  section:last-of-type{ border-bottom:none; }
+  h2{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size: 1.15rem;
+    color: var(--gold-soft);
+    margin: 0 0 10px;
+  }
+  p{
+    margin: 0 0 10px;
+    line-height:1.6;
+    color: var(--paper);
+    font-size: 0.95rem;
+  }
+  p.dim{ color: var(--text-dim); }
+  footer{
+    margin-top: 30px;
+    font-size: 0.78rem;
+    color: rgba(238,241,238,0.4);
+    text-align:center;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="index.html">&larr; Terug naar Zonzoeker</a>
+  <h1>Privacy &amp; disclaimer</h1>
+  <p class="updated">Laatst bijgewerkt: september 2026</p>
+
+  <section>
+    <h2>Gegevensopslag</h2>
+    <p>Zonzoeker slaat alles — je steden, groepen, vertrekpunt en instellingen — lokaal op in je eigen browser (localStorage). Er is geen account, geen inlog en geen server die deze gegevens bewaart. Wis je de browsergegevens van deze site, dan is alles weg; er is geen back-up ergens anders.</p>
+  </section>
+
+  <section>
+    <h2>Geen tracking</h2>
+    <p>Deze app bevat geen analytics, advertenties, cookies voor volggedrag of andere trackingtechnieken. Er wordt niet bijgehouden wie de app gebruikt, hoe vaak, of wat je zoekt.</p>
+  </section>
+
+  <section>
+    <h2>Geen persoonsgegevens</h2>
+    <p>Zonzoeker vraagt geen naam, e-mailadres of ander persoonlijk gegeven. Als je "Gebruik mijn locatie" gebruikt, vraagt je browser daar apart toestemming voor; die locatie blijft in je eigen browser en wordt nergens naartoe gestuurd of opgeslagen buiten je toestel.</p>
+    <p class="dim">Voor het ophalen van weer, kaarten en steden worden wel verzoeken gestuurd naar externe, gratis diensten (o.a. Open-Meteo, RainViewer, OpenStreetMap/Esri en een routeservice). Die diensten zien daarbij het gebruikelijke technische verkeer van je browser (zoals je IP-adres), zoals bij elk bezoek aan een website — Zonzoeker zelf voegt daar niets persoonlijks aan toe.</p>
+  </section>
+
+  <section>
+    <h2>Betrouwbaarheid van het weer</h2>
+    <p>De getoonde weersverwachtingen, radar en rangschikking zijn gebaseerd op openbare, gratis weerdata en bieden geen garantie. Weer is onvoorspelbaar en kan afwijken van wat de app laat zien.</p>
+  </section>
+
+  <section>
+    <h2>Aansprakelijkheid</h2>
+    <p>Zonzoeker is een hobbyproject, gratis en zonder garanties. De maker aanvaardt geen enkele verantwoordelijkheid of aansprakelijkheid voor afwijkend weer, gemiste zon, natte vakanties, verkeerde routekeuzes of anderszins mislukte reizen op basis van deze app. Gebruik op eigen risico.</p>
+  </section>
+
+  <footer>Zonzoeker · een DigiDave-project</footer>
+</div>
+</body>
+</html>
