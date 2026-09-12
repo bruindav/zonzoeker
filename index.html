@@ -369,11 +369,54 @@
     display:none;
   }
 
-  .ref-section{
-    margin: 4px 0 22px;
-    padding-bottom: 18px;
+  .sidebar-tabs{
+    display:flex;
+    gap: 6px;
+    margin: 4px 0 18px;
     border-bottom: 1px solid var(--line);
   }
+  .sidebar-tab{
+    flex:1;
+    background:none;
+    border:none;
+    color: var(--text-dim);
+    font-family:'Inter',sans-serif;
+    font-size: 0.85rem;
+    font-weight:600;
+    padding: 0 0 10px;
+    cursor:pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .sidebar-tab.active{
+    color: var(--gold-soft);
+    border-bottom-color: var(--gold);
+  }
+  .sidebar-panel{ }
+
+  .mini-label{
+    display:block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-dim);
+    margin: 14px 0 6px;
+  }
+  .radius-control{
+    margin: 16px 0 10px;
+  }
+  .radius-control label{
+    display:block;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  .radius-control label strong{ color: var(--gold-soft); font-size: 0.95rem; }
+  .radius-control input[type="range"]{
+    width: 100%;
+    accent-color: var(--gold);
+  }
+
   .ref-current{
     font-size: 0.82rem;
     color: var(--text-dim);
@@ -690,40 +733,59 @@
 
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-head">
-    <span class="sidebar-title">Steden beheren</span>
+    <span class="sidebar-title">Menu</span>
     <button class="close-btn" id="closeSidebar" aria-label="Sluiten">&times;</button>
   </div>
-  <p class="sidebar-intro">Voeg steden toe of zoek grotere steden per regio. Ze verschijnen op de hoofdpagina, bovenaan de stad met de beste vooruitzichten: veel zon en weinig regen in de komende dagen.</p>
 
-  <div class="ref-section">
-    <span class="sidebar-subhead">Vertrekpunt (voor afstand &amp; buurt)</span>
+  <div class="sidebar-tabs">
+    <button class="sidebar-tab active" id="tabRefBtn" data-panel="panelRef">Vertrekpunt</button>
+    <button class="sidebar-tab" id="tabListsBtn" data-panel="panelLists">Eigen groepen</button>
+  </div>
+
+  <div class="sidebar-panel" id="panelRef">
+    <p class="sidebar-intro">Stel in vanaf waar je vertrekt. Zonzoeker toont dan de afstand tot elke stad en een automatisch gebied met grotere steden binnen jouw reisafstand.</p>
+
     <div class="ref-current" id="refCurrent">Niet ingesteld — afstand tot steden wordt dan niet getoond.</div>
+
+    <span class="mini-label">1a. Locatie gebruiken</span>
     <button class="ref-btn" id="useLocationBtn">📍 Gebruik mijn locatie</button>
+
+    <span class="mini-label">1b. Of typ een vertrekplaats</span>
     <form class="add-city ref-form" id="refForm">
-      <input type="text" id="refInput" placeholder="Of typ een vertrekplaats" autocomplete="off">
+      <input type="text" id="refInput" placeholder="Bv. Utrecht" autocomplete="off">
       <button type="submit" id="refBtn">Zet</button>
     </form>
-    <button class="ref-btn nearby-btn" id="nearbyBtn">Zoek grotere steden binnen 250 km</button>
+
+    <div class="radius-control">
+      <label for="radiusInput">Hoe ver wil je maximaal reizen? <strong id="radiusValue">250</strong> km</label>
+      <input type="range" id="radiusInput" min="50" max="500" step="25" value="250">
+    </div>
+
+    <button class="ref-btn nearby-btn" id="nearbyBtn">Zoek grotere steden binnen <span id="nearbyBtnKm">250</span> km</button>
     <div id="nearbyResults"></div>
   </div>
 
-  <form class="add-city" id="addForm">
-    <input type="text" id="cityInput" placeholder="Voeg een stad toe, bv. Sevilla" autocomplete="off">
-    <button type="submit" id="addBtn">Toevoegen</button>
-  </form>
+  <div class="sidebar-panel" id="panelLists" style="display:none;">
+    <p class="sidebar-intro">Maak je eigen groepen van steden, bijvoorbeeld per land of regio. Ze verschijnen als tabs op de hoofdpagina, gerangschikt op de beste vooruitzichten.</p>
 
-  <form class="add-city region-form" id="regionForm">
-    <input type="text" id="regionInput" placeholder="Zoek op regio, bv. Toscane" autocomplete="off">
-    <button type="submit" id="regionBtn">Zoeken</button>
-  </form>
-  <div id="regionResults"></div>
+    <form class="add-city" id="addForm">
+      <input type="text" id="cityInput" placeholder="Voeg een stad toe, bv. Sevilla" autocomplete="off">
+      <button type="submit" id="addBtn">Toevoegen</button>
+    </form>
 
-  <div class="status" id="status"></div>
+    <form class="add-city region-form" id="regionForm">
+      <input type="text" id="regionInput" placeholder="Zoek op regio, bv. Toscane" autocomplete="off">
+      <button type="submit" id="regionBtn">Zoeken</button>
+    </form>
+    <div id="regionResults"></div>
 
-  <div class="sidebar-current">
-    <span class="sidebar-subhead" id="sidebarSubhead">Jouw steden</span>
-    <p class="nearby-note">Dit gebied wordt automatisch bepaald door je vertrekpunt en een straal van 250 km. Wil je een stad hieruit bewaren? Voeg 'm toe aan een eigen lijst.</p>
-    <div class="chips" id="chips"></div>
+    <div class="status" id="status"></div>
+
+    <div class="sidebar-current">
+      <span class="sidebar-subhead" id="sidebarSubhead">Jouw steden</span>
+      <p class="nearby-note">Dit gebied wordt automatisch bepaald door je vertrekpunt en reisafstand. Wil je een stad hieruit bewaren? Voeg 'm toe aan een eigen groep.</p>
+      <div class="chips" id="chips"></div>
+    </div>
   </div>
 </aside>
 
@@ -771,10 +833,10 @@ let appData = { lists: [], activeListId: null }; // { lists: [{id, name, cities:
 let weatherData = {}; // cityId -> {temp, cloud, code, isDay, forecast} — shared cache across all lists
 
 function buildNearbyList(){
-  const hits = refPoint ? searchCitiesNearby(250) : [];
+  const hits = refPoint ? searchCitiesNearby(travelRadius) : [];
   return {
     id: NEARBY_LIST_ID,
-    name: refPoint ? `In de buurt van ${refPoint.name} (250 km)` : 'In de buurt',
+    name: refPoint ? `In de buurt van ${refPoint.name} (${travelRadius} km)` : 'In de buurt',
     cities: hits.map(h => ({
       id: `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}`,
       name: h.n, lat: h.lat, lon: h.lon, admin: h.r, country: h.c
@@ -941,8 +1003,10 @@ function searchCitiesByRegion(query, limit = 8){
 
 // ---- Vertrekpunt & afstand ----
 let refPoint = null; // { name, lat, lon }
+let travelRadius = 250; // km, hoe ver de gebruiker maximaal wil reizen
 let routeCache = {}; // "reflat_reflon_cityId" -> { km, minutes, estimated } | null (pending)
 const REF_STORAGE_KEY = 'zonzoeker:refPoint';
+const RADIUS_STORAGE_KEY = 'zonzoeker:travelRadius';
 
 function haversineKm(lat1, lon1, lat2, lon2){
   const R = 6371;
@@ -1019,6 +1083,11 @@ const refInput = document.getElementById('refInput');
 const refBtn = document.getElementById('refBtn');
 const nearbyBtn = document.getElementById('nearbyBtn');
 const nearbyResultsEl = document.getElementById('nearbyResults');
+const radiusInput = document.getElementById('radiusInput');
+const radiusValueEl = document.getElementById('radiusValue');
+const nearbyBtnKmEl = document.getElementById('nearbyBtnKm');
+const sidebarTabButtons = document.querySelectorAll('.sidebar-tab');
+const sidebarPanels = { panelRef: document.getElementById('panelRef'), panelLists: document.getElementById('panelLists') };
 const sidebar = document.getElementById('sidebar');
 const overlay = document.getElementById('overlay');
 const openSidebarBtn = document.getElementById('openSidebar');
@@ -1562,14 +1631,24 @@ function loadRefPoint(){
     const raw = localStorage.getItem(REF_STORAGE_KEY);
     if(raw) refPoint = JSON.parse(raw);
   }catch(e){ /* ignore */ }
+  try{
+    const rawRadius = localStorage.getItem(RADIUS_STORAGE_KEY);
+    if(rawRadius) travelRadius = parseInt(rawRadius, 10) || 250;
+  }catch(e){ /* ignore */ }
 }
 function saveRefPoint(){
   try{ localStorage.setItem(REF_STORAGE_KEY, JSON.stringify(refPoint)); }catch(e){ /* ignore */ }
+}
+function saveRadius(){
+  try{ localStorage.setItem(RADIUS_STORAGE_KEY, String(travelRadius)); }catch(e){ /* ignore */ }
 }
 function renderRefPoint(){
   refCurrentEl.textContent = refPoint
     ? `📍 ${refPoint.name}`
     : 'Niet ingesteld — afstand tot steden wordt dan niet getoond.';
+  radiusInput.value = travelRadius;
+  radiusValueEl.textContent = travelRadius;
+  nearbyBtnKmEl.textContent = travelRadius;
 }
 function setRefPoint(point){
   refPoint = point;
@@ -1579,6 +1658,30 @@ function setRefPoint(point){
   renderTabs();
   render();
 }
+
+radiusInput.addEventListener('input', () => {
+  travelRadius = parseInt(radiusInput.value, 10);
+  radiusValueEl.textContent = travelRadius;
+  nearbyBtnKmEl.textContent = travelRadius;
+});
+radiusInput.addEventListener('change', () => {
+  saveRadius();
+  routeCache = {};
+  if(appData.activeListId === NEARBY_LIST_ID){
+    renderTabs();
+    render();
+  }
+});
+
+sidebarTabButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    sidebarTabButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    Object.keys(sidebarPanels).forEach(key => {
+      sidebarPanels[key].style.display = (key === btn.dataset.panel) ? '' : 'none';
+    });
+  });
+});
 
 useLocationBtn.addEventListener('click', () => {
   if(!navigator.geolocation){
@@ -1629,9 +1732,9 @@ nearbyBtn.addEventListener('click', () => {
     setStatus('Stel eerst een vertrekpunt in om steden in de buurt te vinden.', true);
     return;
   }
-  const hits = searchCitiesNearby(250);
+  const hits = searchCitiesNearby(travelRadius);
   if(hits.length === 0){
-    nearbyResultsEl.innerHTML = `<div class="region-results"><div class="region-empty">Geen steden vanaf 100.000 inwoners gevonden binnen 250 km van ${refPoint.name}.</div></div>`;
+    nearbyResultsEl.innerHTML = `<div class="region-results"><div class="region-empty">Geen steden vanaf 100.000 inwoners gevonden binnen ${travelRadius} km van ${refPoint.name}.</div></div>`;
     return;
   }
   nearbyResultsEl.innerHTML = `<div class="region-results">` + hits.map(h => {
