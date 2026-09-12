@@ -672,9 +672,17 @@
     border-left: 3px solid transparent;
     font-size: 0.85rem;
   }
-  .hour-row.hour-bad{
+  .hour-row.hour-bad-1{
+    border-left-color: #eb9a86;
+    background: rgba(235,154,134,0.06);
+  }
+  .hour-row.hour-bad-2{
     border-left-color: #e0674f;
     background: rgba(224,103,79,0.08);
+  }
+  .hour-row.hour-bad-3{
+    border-left-color: #b83a24;
+    background: rgba(184,58,36,0.12);
   }
   .hour-row:last-child{ border-bottom:none; }
   .hour-row .hour-time{ color: var(--text-dim); font-variant-numeric: tabular-nums; }
@@ -700,12 +708,12 @@
     border-color: var(--gold);
     background: rgba(232,163,61,0.12);
   }
-  .forecast-day.bad-day{
-    border-bottom: 3px solid #e0674f;
-  }
-  .forecast-day.bad-day:not(.best-day){
-    background: rgba(224,103,79,0.10);
-  }
+  .forecast-day.bad-day-1{ border-bottom: 3px solid #eb9a86; }
+  .forecast-day.bad-day-2{ border-bottom: 3px solid #e0674f; }
+  .forecast-day.bad-day-3{ border-bottom: 3px solid #b83a24; }
+  .forecast-day.bad-day-1:not(.best-day){ background: rgba(235,154,134,0.08); }
+  .forecast-day.bad-day-2:not(.best-day){ background: rgba(224,103,79,0.10); }
+  .forecast-day.bad-day-3:not(.best-day){ background: rgba(184,58,36,0.14); }
   .forecast-day .dow{
     font-size: 0.68rem;
     text-transform: lowercase;
@@ -827,8 +835,16 @@
       <p>Tab "Eigen groepen" in het menu: maak je eigen groepen per land of regio (+ en 🗑 naast het keuzemenu), voeg losse steden toe, of zoek grotere steden per regio. Kies bovenin naar welke groep je toevoegt.</p>
     </div>
     <div class="help-item">
-      <strong>Rangschikking</strong>
-      <p>Steden staan gesorteerd op de beste vooruitzichten: veel zon en weinig regen in de komende dagen. De beste dag per stad krijgt een gouden rand, en harde wind of onweer wordt apart met een icoontje getoond.</p>
+      <strong>Rangschikking — hoe wordt de volgorde bepaald?</strong>
+      <p>Elke stad krijgt per dag een score op basis van hoeveel zon (het weerbeeld), hoe weinig regenkans en een milde temperatuur (tot 30°C, warmer telt niet extra mee). Die dagscores worden gemiddeld over de eerstkomende dagen, waarbij morgen zwaarder meetelt dan over 5 dagen — zo staat een stad die morgen al omslaat naar regen niet hoog puur omdat het er nu toevallig zonnig is.</p>
+    </div>
+    <div class="help-item">
+      <strong>Rode randen — hoe erg is het?</strong>
+      <p>Dagen en uren die niet aan jouw slecht-weer-instellingen voldoen (tab "Instellingen") krijgen een rode markering, in drie tinten: <span style="color:#eb9a86">licht rood</span> = net onder de norm, <span style="color:#e0674f">middenrood</span> = redelijk onder de norm, <span style="color:#b83a24">donkerrood</span> = ver onder de norm. De beste dag houdt zijn gouden rand, ook als hij zelf niet aan de norm voldoet.</p>
+    </div>
+    <div class="help-item">
+      <strong>Uur-tot-uur en waarschuwingen</strong>
+      <p>Tik op een dagvakje voor het weer per uur tussen 10:00-17:00. De icoontjes ⚡ (onweer), 💨 (harde wind) en ❔ (weermodellen zijn het oneens) kun je ook aantikken voor details.</p>
     </div>
     <div class="help-item">
       <strong>Radar</strong>
@@ -1321,20 +1337,27 @@ function formatFullDate(dateStr){
   return d.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
+function badHourSeverity(h){
+  let sev = 0;
+  const bump = (s) => { if(s > sev) sev = s; };
+  if(h.rain >= badWeather.rainPct) bump(severityStep(h.rain - badWeather.rainPct, 15, 35));
+  if(h.temp !== null && h.temp < badWeather.minTemp) bump(severityStep(badWeather.minTemp - h.temp, 3, 6));
+  if(h.temp !== null && h.temp > badWeather.maxTemp) bump(severityStep(h.temp - badWeather.maxTemp, 3, 6));
+  if(h.wind !== null && h.wind >= badWeather.windKmh) bump(severityStep(h.wind - badWeather.windKmh, 15, 30));
+  return sev;
+}
 function isBadHour(h){
-  return h.rain >= badWeather.rainPct
-    || (h.temp !== null && h.temp < badWeather.minTemp)
-    || (h.temp !== null && h.temp > badWeather.maxTemp)
-    || (h.wind !== null && h.wind >= badWeather.windKmh);
+  return badHourSeverity(h) > 0;
 }
 
 function openHourModal(cityId, day){
   const city = findRenderedCityById(cityId);
   hourModalTitleEl.textContent = `${city ? city.name + ' — ' : ''}${formatFullDate(day.date)}`;
   const rows = (day.hours || []).map(h => {
-    const bad = isBadHour(h);
+    const sev = badHourSeverity(h);
+    const sevLabel = sev === 3 ? 'ver onder je norm' : sev === 2 ? 'redelijk onder je norm' : sev === 1 ? 'net onder je norm' : '';
     return `
-    <div class="hour-row ${bad ? 'hour-bad' : ''}" title="${bad ? 'Voldoet niet aan jouw mooi-weer-norm' : ''}">
+    <div class="hour-row ${sev > 0 ? `hour-bad-${sev}` : ''}" title="${sevLabel}">
       <span class="hour-time">${String(h.hour).padStart(2,'0')}:00</span>
       ${weatherIcon(h.code, true).replace('rank-icon','hour-icon')}
       <span class="hour-desc">${weatherDesc(h.code)}</span>
@@ -1622,12 +1645,26 @@ function loadBadWeather(){
 function saveBadWeather(){
   try{ localStorage.setItem(BAD_WEATHER_KEY, JSON.stringify(badWeather)); }catch(e){ /* ignore */ }
 }
+function severityStep(amount, lightMax, mediumMax){
+  if(amount <= 0) return 0;
+  if(amount <= lightMax) return 1;
+  if(amount <= mediumMax) return 2;
+  return 3;
+}
+
+function badSeverity(d){
+  let sev = 0;
+  const bump = (s) => { if(s > sev) sev = s; };
+  if(d.rain >= badWeather.rainPct) bump(severityStep(d.rain - badWeather.rainPct, 15, 35));
+  if(d.rainHours >= badWeather.rainHours) bump(severityStep(d.rainHours - badWeather.rainHours, 1, 3));
+  if(d.tmax < badWeather.minTemp) bump(severityStep(badWeather.minTemp - d.tmax, 3, 6));
+  if(d.tmax > badWeather.maxTemp) bump(severityStep(d.tmax - badWeather.maxTemp, 3, 6));
+  if(d.wind >= badWeather.windKmh) bump(severityStep(d.wind - badWeather.windKmh, 15, 30));
+  return sev;
+}
+
 function isBadDay(d){
-  return d.rain >= badWeather.rainPct
-    || d.rainHours >= badWeather.rainHours
-    || d.tmax < badWeather.minTemp
-    || d.tmax > badWeather.maxTemp
-    || d.wind >= badWeather.windKmh;
+  return badSeverity(d) > 0;
 }
 
 function dayWarning(d){
@@ -1682,13 +1719,14 @@ function cityBlockHtml(c, w, rankLabel, extraClass){
   const strip = (w.forecast || []).map((d, idx) => {
     const warn = dayWarning(d);
     const isBest = idx === bestIdx;
-    const isBad = isBadDay(d);
-    const dayClass = [isBest ? 'best-day' : '', isBad ? 'bad-day' : ''].filter(Boolean).join(' ');
+    const sev = badSeverity(d);
+    const sevLabel = sev === 3 ? 'ver onder je norm' : sev === 2 ? 'redelijk onder je norm' : sev === 1 ? 'net onder je norm' : '';
+    const dayClass = [isBest ? 'best-day' : '', sev > 0 ? `bad-day-${sev}` : ''].filter(Boolean).join(' ');
     const uncertainTitle = d.uncertain
       ? ` — modellen zijn het oneens (${d.rain}% vs ${d.altRain !== undefined ? d.altRain + '%' : weatherDesc(d.altCode)})`
       : '';
     return `
-    <div class="forecast-day ${dayClass}" data-city-id="${c.id}" data-day-idx="${idx}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${isBest ? ' — beste dag' : ''}${isBad ? ' — voldoet aan jouw slecht-weer-criteria' : ''}${warn ? ' — ' + warn.label : ''}${uncertainTitle}">
+    <div class="forecast-day ${dayClass}" data-city-id="${c.id}" data-day-idx="${idx}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${isBest ? ' — beste dag' : ''}${sev > 0 ? ' — ' + sevLabel : ''}${warn ? ' — ' + warn.label : ''}${uncertainTitle}">
       <span class="fc-expand-hint">⋯</span>
       ${warn ? `<span class="fc-warn" data-detail="${warn.label}" title="${warn.label}">${warn.icon}</span>` : ''}
       ${d.uncertain ? `<span class="fc-uncertain" data-detail="Modellen zijn het oneens${uncertainTitle}" title="Modellen zijn het oneens${uncertainTitle}">❔</span>` : ''}
