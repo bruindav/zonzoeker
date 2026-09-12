@@ -2404,6 +2404,7 @@ function setRefPoint(point){
   renderRefPoint();
   renderTabs();
   render();
+  refreshAll();
 }
 
 radiusInput.addEventListener('input', () => {
@@ -2417,6 +2418,7 @@ radiusInput.addEventListener('change', () => {
   if(appData.activeListId === NEARBY_LIST_ID){
     renderTabs();
     render();
+    refreshAll();
   }
 });
 
