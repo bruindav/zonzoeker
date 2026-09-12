@@ -135,6 +135,57 @@
     font-family:'Inter',sans-serif;
   }
   .help-close-btn:hover{ background: var(--gold-soft); }
+
+  .toast{
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%) translateY(12px);
+    background: var(--navy);
+    color: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 0.85rem;
+    line-height:1.4;
+    max-width: min(88vw, 380px);
+    text-align:center;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 60;
+  }
+  .toast.show{
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+    cursor:pointer;
+  }
+
+  .dialog-modal{ max-width: 380px; }
+  .dialog-message{
+    font-size: 0.92rem;
+    line-height:1.5;
+    color: var(--paper);
+    margin: 2px 0 18px;
+  }
+  .dialog-input{
+    width:100%;
+    background: rgba(238,241,238,0.06);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--paper);
+    font-family:'Inter',sans-serif;
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+  }
+  .dialog-actions{
+    display:flex;
+    gap: 10px;
+  }
+  .dialog-actions button{ flex:1; margin:0; }
   .rank-caption{
     color: var(--text-dim);
     font-size: 0.8rem;
@@ -868,6 +919,19 @@
   </div>
 </div>
 
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="dialogOverlay">
+  <div class="help-modal dialog-modal" id="dialogModal">
+    <p class="dialog-message" id="dialogMessage"></p>
+    <input type="text" id="dialogInput" class="dialog-input" style="display:none;">
+    <div class="dialog-actions">
+      <button class="ref-btn" id="dialogCancelBtn">Annuleren</button>
+      <button class="help-close-btn" id="dialogConfirmBtn">OK</button>
+    </div>
+  </div>
+</div>
+
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-head">
     <span class="sidebar-title">Menu</span>
@@ -1254,7 +1318,7 @@ listEl.addEventListener('click', (e) => {
   const badge = e.target.closest('.fc-warn, .fc-uncertain');
   if(badge){
     e.stopPropagation();
-    alert(badge.getAttribute('data-detail') || badge.title || '');
+    showToast(badge.getAttribute('data-detail') || badge.title || '');
     return;
   }
   const dayEl = e.target.closest('.forecast-day');
@@ -1311,6 +1375,12 @@ const hourOverlay = document.getElementById('hourOverlay');
 const hourModalTitleEl = document.getElementById('hourModalTitle');
 const hourModalBodyEl = document.getElementById('hourModalBody');
 const closeHourModalBtn = document.getElementById('closeHourModal');
+const toastEl = document.getElementById('toast');
+const dialogOverlay = document.getElementById('dialogOverlay');
+const dialogMessageEl = document.getElementById('dialogMessage');
+const dialogInputEl = document.getElementById('dialogInput');
+const dialogCancelBtn = document.getElementById('dialogCancelBtn');
+const dialogConfirmBtn = document.getElementById('dialogConfirmBtn');
 const HELP_SEEN_KEY = 'zonzoeker:helpSeen';
 
 function openHelp(){
@@ -1372,6 +1442,60 @@ function closeHourModal(){
   hourOverlay.classList.remove('open');
 }
 closeHourModalBtn.addEventListener('click', closeHourModal);
+
+let toastTimer = null;
+function showToast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 4200);
+}
+toastEl.addEventListener('click', () => { toastEl.classList.remove('show'); clearTimeout(toastTimer); });
+
+let dialogResolve = null;
+let dialogIsPrompt = false;
+
+function closeDialog(result){
+  dialogOverlay.classList.remove('open');
+  const resolve = dialogResolve;
+  dialogResolve = null;
+  if(resolve) resolve(result);
+}
+dialogCancelBtn.addEventListener('click', () => closeDialog(dialogIsPrompt ? null : false));
+dialogConfirmBtn.addEventListener('click', () => {
+  closeDialog(dialogIsPrompt ? (dialogInputEl.value.trim() || null) : true);
+});
+dialogOverlay.addEventListener('click', (e) => {
+  if(e.target === dialogOverlay) closeDialog(dialogIsPrompt ? null : false);
+});
+dialogInputEl.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter') dialogConfirmBtn.click();
+});
+
+function showConfirm(message, confirmLabel){
+  return new Promise(resolve => {
+    dialogResolve = resolve;
+    dialogIsPrompt = false;
+    dialogMessageEl.textContent = message;
+    dialogInputEl.style.display = 'none';
+    dialogConfirmBtn.textContent = confirmLabel || 'Verwijderen';
+    dialogOverlay.classList.add('open');
+  });
+}
+
+function showPrompt(message, placeholder){
+  return new Promise(resolve => {
+    dialogResolve = resolve;
+    dialogIsPrompt = true;
+    dialogMessageEl.textContent = message;
+    dialogInputEl.style.display = '';
+    dialogInputEl.value = '';
+    dialogInputEl.placeholder = placeholder || '';
+    dialogConfirmBtn.textContent = 'Toevoegen';
+    dialogOverlay.classList.add('open');
+    setTimeout(() => dialogInputEl.focus(), 60);
+  });
+}
 hourOverlay.addEventListener('click', (e) => { if(e.target === hourOverlay) closeHourModal(); });
 
 function openSidebar(){
@@ -1942,8 +2066,8 @@ editListSelect.addEventListener('change', () => {
   render();
 });
 
-function createNewList(){
-  const name = prompt('Naam van de nieuwe groep (bv. Zuid-Europa):');
+async function createNewList(){
+  const name = await showPrompt('Naam van de nieuwe groep', 'bv. Zuid-Europa');
   if(!name || !name.trim()) return null;
   const newList = { id: makeListId(), name: name.trim(), cities: [] };
   appData.lists.push(newList);
@@ -1963,7 +2087,7 @@ async function deleteListById(id){
     setStatus('Je kunt je laatste groep niet verwijderen.', true);
     return;
   }
-  if(!confirm(`Groep "${list.name}" verwijderen? De steden erin gaan mee weg.`)) return;
+  if(!(await showConfirm(`Groep "${list.name}" verwijderen? De steden erin gaan mee weg.`))) return;
   appData.lists = appData.lists.filter(l => l.id !== id);
   if(appData.activeListId === id) appData.activeListId = appData.lists[0].id;
   ensureEditListId();
@@ -1974,9 +2098,9 @@ async function deleteListById(id){
   await refreshAll();
 }
 
-newGroupBtn.addEventListener('click', () => {
-  createNewList();
-  openSidebarPanel('panelLists');
+newGroupBtn.addEventListener('click', async () => {
+  const created = await createNewList();
+  if(created) openSidebarPanel('panelLists');
 });
 deleteGroupBtn.addEventListener('click', () => deleteListById(editListId));
 
@@ -1998,7 +2122,7 @@ listTabsEl.addEventListener('click', async (e) => {
     return;
   }
   if(e.target.id === 'addListTab'){
-    if(createNewList()) openSidebarPanel('panelLists');
+    if(await createNewList()) openSidebarPanel('panelLists');
     return;
   }
   const tabBtn = e.target.closest('[data-list]');
