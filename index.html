@@ -1354,14 +1354,14 @@ async function ensureRoute(city){
   render();
 }
 
-function searchCitiesNearby(radiusKm = 250, limit = 10){
+function searchCitiesNearby(radiusKm = 250, limit = null){
   if(!refPoint) return [];
-  return EU_CITIES
+  const results = EU_CITIES
     .filter(c => c.pop >= minPopulation)
     .map(c => ({ ...c, dist: haversineKm(refPoint.lat, refPoint.lon, c.lat, c.lon) }))
     .filter(c => c.dist <= radiusKm)
-    .sort((a, b) => a.dist - b.dist)
-    .slice(0, limit);
+    .sort((a, b) => a.dist - b.dist);
+  return limit ? results.slice(0, limit) : results;
 }
 
 // ---- Windrichting-dekking: zorgt dat elke richting rondom het vertrekpunt
@@ -2520,9 +2520,9 @@ nearbyBtn.addEventListener('click', () => {
     setStatus('Stel eerst een vertrekpunt in om steden in de buurt te vinden.', true);
     return;
   }
-  const hits = searchCitiesNearby(travelRadius);
+  const hits = searchCitiesNearby(travelRadius, 20);
   if(hits.length === 0){
-    nearbyResultsEl.innerHTML = `<div class="region-results"><div class="region-empty">Geen steden vanaf 100.000 inwoners gevonden binnen ${travelRadius} km van ${refPoint.name}.</div></div>`;
+    nearbyResultsEl.innerHTML = `<div class="region-results"><div class="region-empty">Geen steden vanaf ${minPopulation.toLocaleString('nl-NL')} inwoners gevonden binnen ${travelRadius} km van ${refPoint.name}.</div></div>`;
     return;
   }
   nearbyResultsEl.innerHTML = `<div class="region-results">` + hits.map(h => {
