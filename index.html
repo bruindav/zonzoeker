@@ -437,6 +437,37 @@
     accent-color: var(--gold);
   }
 
+  .setting-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.88rem;
+    color: var(--paper);
+  }
+  .setting-row:last-of-type{ border-bottom:none; }
+  .setting-input{
+    display:flex;
+    align-items:center;
+    gap: 6px;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    white-space:nowrap;
+  }
+  .setting-input input[type="number"]{
+    width: 62px;
+    background: rgba(238,241,238,0.06);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 8px;
+    color: var(--paper);
+    font-family:'Inter',sans-serif;
+    font-size: 0.88rem;
+    text-align:right;
+  }
+
   .ref-current{
     font-size: 0.82rem;
     color: var(--text-dim);
@@ -628,9 +659,20 @@
     font-size: 0.7rem;
     line-height:1;
   }
+  .fc-uncertain{
+    position:absolute;
+    top: 2px;
+    left: 3px;
+    font-size: 0.7rem;
+    line-height:1;
+  }
   .forecast-day.best-day{
     border-color: var(--gold);
     background: rgba(232,163,61,0.12);
+  }
+  .forecast-day.bad-day{
+    border-bottom: 3px solid #e0674f;
+    background: rgba(224,103,79,0.10);
   }
   .forecast-day .dow{
     font-size: 0.68rem;
@@ -777,6 +819,7 @@
   <div class="sidebar-tabs">
     <button class="sidebar-tab active" id="tabRefBtn" data-panel="panelRef">Vertrekpunt</button>
     <button class="sidebar-tab" id="tabListsBtn" data-panel="panelLists">Eigen groepen</button>
+    <button class="sidebar-tab" id="tabSettingsBtn" data-panel="panelSettings">Instellingen</button>
   </div>
 
   <div class="sidebar-panel" id="panelRef">
@@ -829,6 +872,33 @@
       <span class="sidebar-subhead" id="sidebarSubhead">Jouw steden</span>
       <div class="chips" id="chips"></div>
     </div>
+  </div>
+
+  <div class="sidebar-panel" id="panelSettings" style="display:none;">
+    <p class="sidebar-intro">Stel in wat voor jou telt als slecht weer. Dagen die eraan voldoen krijgen een rode onderrand in de voorspelling.</p>
+
+    <label class="setting-row">
+      <span>Regenkans vanaf</span>
+      <span class="setting-input"><input type="number" id="setRainPct" min="0" max="100" step="5"> %</span>
+    </label>
+    <label class="setting-row">
+      <span>Regen minstens</span>
+      <span class="setting-input"><input type="number" id="setRainHours" min="0" max="24" step="1"> uur/dag</span>
+    </label>
+    <label class="setting-row">
+      <span>Kouder dan</span>
+      <span class="setting-input"><input type="number" id="setMinTemp" step="1"> °C</span>
+    </label>
+    <label class="setting-row">
+      <span>Warmer dan</span>
+      <span class="setting-input"><input type="number" id="setMaxTemp" step="1"> °C</span>
+    </label>
+    <label class="setting-row">
+      <span>Storm vanaf</span>
+      <span class="setting-input"><input type="number" id="setWindKmh" min="0" step="5"> km/u</span>
+    </label>
+
+    <button class="ref-btn" id="resetSettingsBtn">Terugzetten naar standaard</button>
   </div>
 </aside>
 
@@ -1141,8 +1211,14 @@ const nearbyResultsEl = document.getElementById('nearbyResults');
 const radiusInput = document.getElementById('radiusInput');
 const radiusValueEl = document.getElementById('radiusValue');
 const nearbyBtnKmEl = document.getElementById('nearbyBtnKm');
+const setRainPct = document.getElementById('setRainPct');
+const setRainHours = document.getElementById('setRainHours');
+const setMinTemp = document.getElementById('setMinTemp');
+const setMaxTemp = document.getElementById('setMaxTemp');
+const setWindKmh = document.getElementById('setWindKmh');
+const resetSettingsBtn = document.getElementById('resetSettingsBtn');
 const sidebarTabButtons = document.querySelectorAll('.sidebar-tab');
-const sidebarPanels = { panelRef: document.getElementById('panelRef'), panelLists: document.getElementById('panelLists') };
+const sidebarPanels = { panelRef: document.getElementById('panelRef'), panelLists: document.getElementById('panelLists'), panelSettings: document.getElementById('panelSettings') };
 const editListSelect = document.getElementById('editListSelect');
 const newGroupBtn = document.getElementById('newGroupBtn');
 const deleteGroupBtn = document.getElementById('deleteGroupBtn');
@@ -1328,20 +1404,52 @@ async function geocode(name){
   return { name: r.name, lat: r.latitude, lon: r.longitude, admin: r.admin1 || '', country: r.country || '' };
 }
 
+function weatherCodeCategory(code){
+  const c = Number(code);
+  if([0,1,2,3].includes(c)) return 'droog';
+  if([45,48].includes(c)) return 'mist';
+  return 'nat';
+}
+
 async function fetchWeather(city){
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_mean,wind_speed_10m_max&forecast_days=10&timezone=auto`;
-  const res = await fetch(url);
+  const primaryUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_mean,precipitation_hours,wind_speed_10m_max&forecast_days=10&timezone=auto`;
+  const altUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&daily=weather_code,precipitation_probability_mean&models=ecmwf_ifs025&forecast_days=10&timezone=auto`;
+
+  const res = await fetch(primaryUrl);
   const data = await res.json();
   const cur = data.current;
   const daily = data.daily;
-  const forecast = (daily && daily.time) ? daily.time.map((date, i) => ({
-    date,
-    code: daily.weather_code[i],
-    tmax: Math.round(daily.temperature_2m_max[i]),
-    tmin: Math.round(daily.temperature_2m_min[i]),
-    rain: daily.precipitation_probability_mean ? daily.precipitation_probability_mean[i] : 0,
-    wind: daily.wind_speed_10m_max ? Math.round(daily.wind_speed_10m_max[i]) : 0
-  })) : [];
+
+  let altDaily = null;
+  try{
+    const altRes = await fetch(altUrl);
+    const altData = await altRes.json();
+    if(altData && altData.daily) altDaily = altData.daily;
+  }catch(e){ /* comparison model optional; skip silently on failure */ }
+
+  const forecast = (daily && daily.time) ? daily.time.map((date, i) => {
+    const code = daily.weather_code[i];
+    const rain = daily.precipitation_probability_mean ? daily.precipitation_probability_mean[i] : 0;
+    let uncertain = false, altCode, altRain;
+    if(altDaily && altDaily.weather_code && altDaily.weather_code[i] !== undefined){
+      altCode = altDaily.weather_code[i];
+      altRain = altDaily.precipitation_probability_mean ? altDaily.precipitation_probability_mean[i] : undefined;
+      const categoryMismatch = weatherCodeCategory(code) !== weatherCodeCategory(altCode);
+      const rainMismatch = (altRain !== undefined) && Math.abs(altRain - rain) >= 30;
+      uncertain = categoryMismatch || rainMismatch;
+    }
+    return {
+      date,
+      code,
+      tmax: Math.round(daily.temperature_2m_max[i]),
+      tmin: Math.round(daily.temperature_2m_min[i]),
+      rain,
+      rainHours: daily.precipitation_hours ? Math.round(daily.precipitation_hours[i]) : 0,
+      wind: daily.wind_speed_10m_max ? Math.round(daily.wind_speed_10m_max[i]) : 0,
+      uncertain,
+      altCode, altRain
+    };
+  }) : [];
   return {
     temp: Math.round(cur.temperature_2m),
     cloud: cur.cloud_cover,
@@ -1349,6 +1457,28 @@ async function fetchWeather(city){
     isDay: cur.is_day === 1,
     forecast
   };
+}
+
+// ---- Instelbaar: wat telt als "slecht weer" ----
+const BAD_WEATHER_KEY = 'zonzoeker:badWeather';
+const BAD_WEATHER_DEFAULTS = { rainPct: 50, rainHours: 18, minTemp: 10, maxTemp: 32, windKmh: 60 };
+let badWeather = { ...BAD_WEATHER_DEFAULTS };
+
+function loadBadWeather(){
+  try{
+    const raw = localStorage.getItem(BAD_WEATHER_KEY);
+    if(raw) badWeather = { ...BAD_WEATHER_DEFAULTS, ...JSON.parse(raw) };
+  }catch(e){ /* ignore */ }
+}
+function saveBadWeather(){
+  try{ localStorage.setItem(BAD_WEATHER_KEY, JSON.stringify(badWeather)); }catch(e){ /* ignore */ }
+}
+function isBadDay(d){
+  return d.rain >= badWeather.rainPct
+    || d.rainHours >= badWeather.rainHours
+    || d.tmin < badWeather.minTemp
+    || d.tmax > badWeather.maxTemp
+    || d.wind >= badWeather.windKmh;
 }
 
 function dayWarning(d){
@@ -1402,9 +1532,16 @@ function cityBlockHtml(c, w, rankLabel, extraClass){
   const bestIdx = scores.length ? scores.indexOf(Math.max(...scores)) : -1;
   const strip = (w.forecast || []).map((d, idx) => {
     const warn = dayWarning(d);
+    const isBest = idx === bestIdx;
+    const isBad = !isBest && isBadDay(d);
+    const dayClass = isBest ? 'best-day' : (isBad ? 'bad-day' : '');
+    const uncertainTitle = d.uncertain
+      ? ` — modellen zijn het oneens (${d.rain}% vs ${d.altRain !== undefined ? d.altRain + '%' : weatherDesc(d.altCode)})`
+      : '';
     return `
-    <div class="forecast-day ${idx === bestIdx ? 'best-day' : ''}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${idx === bestIdx ? ' — beste dag' : ''}${warn ? ' — ' + warn.label : ''}">
+    <div class="forecast-day ${dayClass}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${isBest ? ' — beste dag' : ''}${isBad ? ' — voldoet aan jouw slecht-weer-criteria' : ''}${warn ? ' — ' + warn.label : ''}${uncertainTitle}">
       ${warn ? `<span class="fc-warn" title="${warn.label}">${warn.icon}</span>` : ''}
+      ${d.uncertain ? `<span class="fc-uncertain" title="Modellen zijn het oneens${uncertainTitle}">❔</span>` : ''}
       <div class="dow">${dayLabel(d.date, idx)}</div>
       ${weatherIcon(d.code, true).replace('rank-icon','fc-icon')}
       <div class="tmax">${d.tmax}°</div>
@@ -1474,6 +1611,35 @@ const radarToggleBtn = document.getElementById('radarToggle');
 const radarPanelEl = document.getElementById('radarPanel');
 const radarPlayBtn = document.getElementById('radarPlay');
 const radarTimeEl = document.getElementById('radarTime');
+
+function renderBadWeatherInputs(){
+  setRainPct.value = badWeather.rainPct;
+  setRainHours.value = badWeather.rainHours;
+  setMinTemp.value = badWeather.minTemp;
+  setMaxTemp.value = badWeather.maxTemp;
+  setWindKmh.value = badWeather.windKmh;
+}
+
+function bindBadWeatherInput(input, key){
+  input.addEventListener('change', () => {
+    const val = parseFloat(input.value);
+    if(!Number.isNaN(val)) badWeather[key] = val;
+    saveBadWeather();
+    render();
+  });
+}
+bindBadWeatherInput(setRainPct, 'rainPct');
+bindBadWeatherInput(setRainHours, 'rainHours');
+bindBadWeatherInput(setMinTemp, 'minTemp');
+bindBadWeatherInput(setMaxTemp, 'maxTemp');
+bindBadWeatherInput(setWindKmh, 'windKmh');
+
+resetSettingsBtn.addEventListener('click', () => {
+  badWeather = { ...BAD_WEATHER_DEFAULTS };
+  saveBadWeather();
+  renderBadWeatherInputs();
+  render();
+});
 
 async function initRadarIfNeeded(){
   if(radarMap) return;
@@ -1899,6 +2065,8 @@ chipsEl.addEventListener('click', (e) => {
   await loadCities();
   loadRefPoint();
   renderRefPoint();
+  loadBadWeather();
+  renderBadWeatherInputs();
   ensureEditListId();
   renderListSelect();
   renderTabs();
