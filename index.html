@@ -667,9 +667,14 @@
     grid-template-columns: 44px 26px 1fr auto auto;
     align-items:center;
     gap: 10px;
-    padding: 9px 0;
+    padding: 9px 6px 9px 10px;
     border-bottom: 1px solid var(--line);
+    border-left: 3px solid transparent;
     font-size: 0.85rem;
+  }
+  .hour-row.hour-bad{
+    border-left-color: #e0674f;
+    background: rgba(224,103,79,0.08);
   }
   .hour-row:last-child{ border-bottom:none; }
   .hour-row .hour-time{ color: var(--text-dim); font-variant-numeric: tabular-nums; }
@@ -1316,18 +1321,27 @@ function formatFullDate(dateStr){
   return d.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
+function isBadHour(h){
+  return h.rain >= badWeather.rainPct
+    || (h.temp !== null && h.temp < badWeather.minTemp)
+    || (h.temp !== null && h.temp > badWeather.maxTemp)
+    || (h.wind !== null && h.wind >= badWeather.windKmh);
+}
+
 function openHourModal(cityId, day){
   const city = findRenderedCityById(cityId);
   hourModalTitleEl.textContent = `${city ? city.name + ' — ' : ''}${formatFullDate(day.date)}`;
-  const rows = (day.hours || []).map(h => `
-    <div class="hour-row">
+  const rows = (day.hours || []).map(h => {
+    const bad = isBadHour(h);
+    return `
+    <div class="hour-row ${bad ? 'hour-bad' : ''}" title="${bad ? 'Voldoet niet aan jouw mooi-weer-norm' : ''}">
       <span class="hour-time">${String(h.hour).padStart(2,'0')}:00</span>
       ${weatherIcon(h.code, true).replace('rank-icon','hour-icon')}
       <span class="hour-desc">${weatherDesc(h.code)}</span>
       <span class="hour-rain">${h.rain}%</span>
       <span class="hour-temp">${h.temp !== null ? h.temp + '°' : '—'}</span>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   hourModalBodyEl.innerHTML = rows || `<p class="sidebar-intro">Geen uurgegevens beschikbaar.</p>`;
   hourOverlay.classList.add('open');
 }
