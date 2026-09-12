@@ -651,7 +651,32 @@
     background: rgba(238,241,238,0.04);
     border: 1.5px solid transparent;
     position: relative;
+    cursor: pointer;
   }
+  .fc-expand-hint{
+    position:absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    color: rgba(238,241,238,0.3);
+    line-height:1;
+  }
+  .hour-row{
+    display:grid;
+    grid-template-columns: 44px 26px 1fr auto auto;
+    align-items:center;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.85rem;
+  }
+  .hour-row:last-child{ border-bottom:none; }
+  .hour-row .hour-time{ color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .hour-row .hour-icon{ width:22px; height:22px; }
+  .hour-row .hour-desc{ color: var(--text-dim); font-size: 0.8rem; }
+  .hour-row .hour-temp{ font-weight:600; text-align:right; }
+  .hour-row .hour-rain{ color: var(--cool); font-size: 0.8rem; text-align:right; white-space:nowrap; }
   .fc-warn{
     position:absolute;
     top: 2px;
@@ -809,6 +834,16 @@
       <p>Zet de pagina via je browser ("Zet op beginscherm" / "Toevoegen aan startscherm") op je telefoon voor het zon-icoon en volledig scherm.</p>
     </div>
     <button class="help-close-btn" id="closeHelpBtn">Begrepen</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="hourOverlay">
+  <div class="help-modal" id="hourModal">
+    <div class="sidebar-head">
+      <span class="sidebar-title" id="hourModalTitle">Uurverwachting</span>
+      <button class="close-btn" id="closeHourModal" aria-label="Sluiten">&times;</button>
+    </div>
+    <div id="hourModalBody"></div>
   </div>
 </div>
 
@@ -1199,6 +1234,16 @@ listEl.addEventListener('click', (e) => {
   if(badge){
     e.stopPropagation();
     alert(badge.getAttribute('data-detail') || badge.title || '');
+    return;
+  }
+  const dayEl = e.target.closest('.forecast-day');
+  if(dayEl && dayEl.dataset.cityId !== undefined){
+    const cityId = dayEl.dataset.cityId;
+    const dayIdx = parseInt(dayEl.dataset.dayIdx, 10);
+    const w = weatherData[cityId];
+    if(w && w.forecast && w.forecast[dayIdx]){
+      openHourModal(cityId, w.forecast[dayIdx]);
+    }
   }
 });
 const statusEl = document.getElementById('status');
@@ -1241,6 +1286,10 @@ const helpBtn = document.getElementById('helpBtn');
 const helpOverlay = document.getElementById('helpOverlay');
 const closeHelpBtn = document.getElementById('closeHelp');
 const closeHelpMainBtn = document.getElementById('closeHelpBtn');
+const hourOverlay = document.getElementById('hourOverlay');
+const hourModalTitleEl = document.getElementById('hourModalTitle');
+const hourModalBodyEl = document.getElementById('hourModalBody');
+const closeHourModalBtn = document.getElementById('closeHourModal');
 const HELP_SEEN_KEY = 'zonzoeker:helpSeen';
 
 function openHelp(){
@@ -1255,6 +1304,38 @@ helpBtn.addEventListener('click', openHelp);
 closeHelpBtn.addEventListener('click', closeHelp);
 closeHelpMainBtn.addEventListener('click', closeHelp);
 helpOverlay.addEventListener('click', (e) => { if(e.target === helpOverlay) closeHelp(); });
+
+function findRenderedCityById(id){
+  const rc = refPointCity();
+  if(rc && rc.id === id) return rc;
+  return currentList().cities.find(c => c.id === id);
+}
+
+function formatFullDate(dateStr){
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function openHourModal(cityId, day){
+  const city = findRenderedCityById(cityId);
+  hourModalTitleEl.textContent = `${city ? city.name + ' — ' : ''}${formatFullDate(day.date)}`;
+  const rows = (day.hours || []).map(h => `
+    <div class="hour-row">
+      <span class="hour-time">${String(h.hour).padStart(2,'0')}:00</span>
+      ${weatherIcon(h.code, true).replace('rank-icon','hour-icon')}
+      <span class="hour-desc">${weatherDesc(h.code)}</span>
+      <span class="hour-rain">${h.rain}%</span>
+      <span class="hour-temp">${h.temp !== null ? h.temp + '°' : '—'}</span>
+    </div>
+  `).join('');
+  hourModalBodyEl.innerHTML = rows || `<p class="sidebar-intro">Geen uurgegevens beschikbaar.</p>`;
+  hourOverlay.classList.add('open');
+}
+function closeHourModal(){
+  hourOverlay.classList.remove('open');
+}
+closeHourModalBtn.addEventListener('click', closeHourModal);
+hourOverlay.addEventListener('click', (e) => { if(e.target === hourOverlay) closeHourModal(); });
 
 function openSidebar(){
   sidebar.classList.add('open');
@@ -1440,7 +1521,8 @@ function bucketDaytimeHours(hourly, fields){
     const hour = parseInt(t.slice(11, 13), 10);
     if(hour < DAYTIME_START_HOUR || hour > DAYTIME_END_HOUR) return;
     const date = t.slice(0, 10);
-    if(!byDate[date]) byDate[date] = {};
+    if(!byDate[date]) byDate[date] = { hour: [] };
+    byDate[date].hour.push(hour);
     fields.forEach(f => {
       if(!byDate[date][f]) byDate[date][f] = [];
       if(hourly[f]) byDate[date][f].push(hourly[f][i]);
@@ -1480,6 +1562,13 @@ async function fetchWeather(city){
     const rainHours = rains.filter(p => p >= 50).length;
     const wind = winds.length ? Math.round(Math.max(...winds)) : 0;
     const code = codes.length ? worstWeatherCode(codes) : 0;
+    const hours = (b.hour || []).map((h, hi) => ({
+      hour: h,
+      temp: temps[hi] !== undefined ? Math.round(temps[hi]) : null,
+      rain: rains[hi] !== undefined ? rains[hi] : 0,
+      wind: winds[hi] !== undefined ? Math.round(winds[hi]) : null,
+      code: codes[hi]
+    }));
 
     let uncertain = false, altCode, altRain;
     const ab = altByDate[date];
@@ -1492,7 +1581,7 @@ async function fetchWeather(city){
       uncertain = categoryMismatch || rainMismatch;
     }
 
-    return { date, code, tmax, tmin, rain, rainHours, wind, uncertain, altCode, altRain };
+    return { date, code, tmax, tmin, rain, rainHours, wind, uncertain, altCode, altRain, hours };
   });
 
   return {
@@ -1585,7 +1674,8 @@ function cityBlockHtml(c, w, rankLabel, extraClass){
       ? ` — modellen zijn het oneens (${d.rain}% vs ${d.altRain !== undefined ? d.altRain + '%' : weatherDesc(d.altCode)})`
       : '';
     return `
-    <div class="forecast-day ${dayClass}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${isBest ? ' — beste dag' : ''}${isBad ? ' — voldoet aan jouw slecht-weer-criteria' : ''}${warn ? ' — ' + warn.label : ''}${uncertainTitle}">
+    <div class="forecast-day ${dayClass}" data-city-id="${c.id}" data-day-idx="${idx}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${isBest ? ' — beste dag' : ''}${isBad ? ' — voldoet aan jouw slecht-weer-criteria' : ''}${warn ? ' — ' + warn.label : ''}${uncertainTitle}">
+      <span class="fc-expand-hint">⋯</span>
       ${warn ? `<span class="fc-warn" data-detail="${warn.label}" title="${warn.label}">${warn.icon}</span>` : ''}
       ${d.uncertain ? `<span class="fc-uncertain" data-detail="Modellen zijn het oneens${uncertainTitle}" title="Modellen zijn het oneens${uncertainTitle}">❔</span>` : ''}
       <div class="dow">${dayLabel(d.date, idx)}</div>
