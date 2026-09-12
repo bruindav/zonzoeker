@@ -354,8 +354,13 @@
     margin: 0 0 20px;
   }
   .sidebar-current{ margin-top: 22px; }
+  .edit-list-row{
+    display:flex;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
   .edit-list-select{
-    width:100%;
+    flex:1;
     background: rgba(238,241,238,0.06);
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -363,8 +368,18 @@
     color: var(--paper);
     font-family:'Inter',sans-serif;
     font-size: 0.9rem;
-    margin-bottom: 14px;
   }
+  .icon-btn{
+    flex-shrink:0;
+    width: 38px;
+    background: rgba(238,241,238,0.06);
+    border: 1px solid var(--line);
+    color: var(--paper);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    cursor:pointer;
+  }
+  .icon-btn:hover{ background: rgba(238,241,238,0.12); }
 
   .sidebar-tabs{
     display:flex;
@@ -766,7 +781,11 @@
     <p class="sidebar-intro">Maak je eigen groepen van steden, bijvoorbeeld per land of regio. Ze verschijnen als tabs op de hoofdpagina, gerangschikt op de beste vooruitzichten.</p>
 
     <span class="mini-label">Je voegt toe aan</span>
-    <select id="editListSelect" class="edit-list-select"></select>
+    <div class="edit-list-row">
+      <select id="editListSelect" class="edit-list-select"></select>
+      <button class="icon-btn" id="newGroupBtn" title="Nieuwe groep">+</button>
+      <button class="icon-btn" id="deleteGroupBtn" title="Groep verwijderen">🗑</button>
+    </div>
 
     <form class="add-city" id="addForm">
       <input type="text" id="cityInput" placeholder="Voeg een stad toe, bv. Sevilla" autocomplete="off">
@@ -1100,6 +1119,8 @@ const nearbyBtnKmEl = document.getElementById('nearbyBtnKm');
 const sidebarTabButtons = document.querySelectorAll('.sidebar-tab');
 const sidebarPanels = { panelRef: document.getElementById('panelRef'), panelLists: document.getElementById('panelLists') };
 const editListSelect = document.getElementById('editListSelect');
+const newGroupBtn = document.getElementById('newGroupBtn');
+const deleteGroupBtn = document.getElementById('deleteGroupBtn');
 const sidebar = document.getElementById('sidebar');
 const overlay = document.getElementById('overlay');
 const openSidebarBtn = document.getElementById('openSidebar');
@@ -1516,6 +1537,44 @@ editListSelect.addEventListener('change', () => {
   render();
 });
 
+function createNewList(){
+  const name = prompt('Naam van de nieuwe groep (bv. Zuid-Europa):');
+  if(!name || !name.trim()) return null;
+  const newList = { id: makeListId(), name: name.trim(), cities: [] };
+  appData.lists.push(newList);
+  appData.activeListId = newList.id;
+  editListId = newList.id;
+  saveCities();
+  renderTabs();
+  renderListSelect();
+  render();
+  return newList;
+}
+
+async function deleteListById(id){
+  const list = appData.lists.find(l => l.id === id);
+  if(!list) return;
+  if(appData.lists.length <= 1){
+    setStatus('Je kunt je laatste groep niet verwijderen.', true);
+    return;
+  }
+  if(!confirm(`Groep "${list.name}" verwijderen? De steden erin gaan mee weg.`)) return;
+  appData.lists = appData.lists.filter(l => l.id !== id);
+  if(appData.activeListId === id) appData.activeListId = appData.lists[0].id;
+  ensureEditListId();
+  saveCities();
+  renderTabs();
+  renderListSelect();
+  render();
+  await refreshAll();
+}
+
+newGroupBtn.addEventListener('click', () => {
+  createNewList();
+  openSidebarPanel('panelLists');
+});
+deleteGroupBtn.addEventListener('click', () => deleteListById(editListId));
+
 function renderTabs(){
   const nearbyTab = refPoint
     ? `<button class="tab nearby-tab ${appData.activeListId === NEARBY_LIST_ID ? 'active' : ''}" data-list="${NEARBY_LIST_ID}">📍 In de buurt</button>`
@@ -1530,32 +1589,11 @@ function renderTabs(){
 listTabsEl.addEventListener('click', async (e) => {
   const delId = e.target.getAttribute('data-delete-list');
   if(delId){
-    const list = appData.lists.find(l => l.id === delId);
-    if(list && confirm(`Lijst "${list.name}" verwijderen? De steden erin gaan mee weg.`)){
-      appData.lists = appData.lists.filter(l => l.id !== delId);
-      appData.activeListId = appData.lists[0].id;
-      ensureEditListId();
-      renderListSelect();
-      saveCities();
-      renderTabs();
-      render();
-      await refreshAll();
-    }
+    await deleteListById(delId);
     return;
   }
   if(e.target.id === 'addListTab'){
-    const name = prompt('Naam van de nieuwe lijst (bv. Zuid-Europa):');
-    if(name && name.trim()){
-      const newList = { id: makeListId(), name: name.trim(), cities: [] };
-      appData.lists.push(newList);
-      appData.activeListId = newList.id;
-      editListId = newList.id;
-      saveCities();
-      renderTabs();
-      renderListSelect();
-      render();
-      openSidebarPanel('panelLists');
-    }
+    if(createNewList()) openSidebarPanel('panelLists');
     return;
   }
   const tabBtn = e.target.closest('[data-list]');
