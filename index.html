@@ -354,19 +354,16 @@
     margin: 0 0 20px;
   }
   .sidebar-current{ margin-top: 22px; }
-  .nearby-note{
-    display:none;
-    font-size: 0.8rem;
-    color: var(--text-dim);
-    line-height:1.5;
-    margin: 0 0 12px;
-  }
-  .sidebar.nearby-mode .nearby-note{ display:block; }
-  .sidebar.nearby-mode #addForm,
-  .sidebar.nearby-mode .region-form,
-  .sidebar.nearby-mode #regionResults,
-  .sidebar.nearby-mode .chip .remove-btn{
-    display:none;
+  .edit-list-select{
+    width:100%;
+    background: rgba(238,241,238,0.06);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--paper);
+    font-family:'Inter',sans-serif;
+    font-size: 0.9rem;
+    margin-bottom: 14px;
   }
 
   .sidebar-tabs{
@@ -768,6 +765,9 @@
   <div class="sidebar-panel" id="panelLists" style="display:none;">
     <p class="sidebar-intro">Maak je eigen groepen van steden, bijvoorbeeld per land of regio. Ze verschijnen als tabs op de hoofdpagina, gerangschikt op de beste vooruitzichten.</p>
 
+    <span class="mini-label">Je voegt toe aan</span>
+    <select id="editListSelect" class="edit-list-select"></select>
+
     <form class="add-city" id="addForm">
       <input type="text" id="cityInput" placeholder="Voeg een stad toe, bv. Sevilla" autocomplete="off">
       <button type="submit" id="addBtn">Toevoegen</button>
@@ -783,7 +783,6 @@
 
     <div class="sidebar-current">
       <span class="sidebar-subhead" id="sidebarSubhead">Jouw steden</span>
-      <p class="nearby-note">Dit gebied wordt automatisch bepaald door je vertrekpunt en reisafstand. Wil je een stad hieruit bewaren? Voeg 'm toe aan een eigen groep.</p>
       <div class="chips" id="chips"></div>
     </div>
   </div>
@@ -847,6 +846,18 @@ function buildNearbyList(){
 function currentList(){
   if(appData.activeListId === NEARBY_LIST_ID) return buildNearbyList();
   return appData.lists.find(l => l.id === appData.activeListId) || appData.lists[0];
+}
+
+let editListId = null; // which real (non-nearby) list the sidebar's add/remove actions target
+function editList(){
+  return appData.lists.find(l => l.id === editListId) || appData.lists[0];
+}
+function ensureEditListId(){
+  if(!appData.lists.some(l => l.id === editListId)){
+    editListId = (appData.activeListId !== NEARBY_LIST_ID && appData.lists.some(l => l.id === appData.activeListId))
+      ? appData.activeListId
+      : appData.lists[0].id;
+  }
 }
 
 function makeListId(){
@@ -1088,6 +1099,7 @@ const radiusValueEl = document.getElementById('radiusValue');
 const nearbyBtnKmEl = document.getElementById('nearbyBtnKm');
 const sidebarTabButtons = document.querySelectorAll('.sidebar-tab');
 const sidebarPanels = { panelRef: document.getElementById('panelRef'), panelLists: document.getElementById('panelLists') };
+const editListSelect = document.getElementById('editListSelect');
 const sidebar = document.getElementById('sidebar');
 const overlay = document.getElementById('overlay');
 const openSidebarBtn = document.getElementById('openSidebar');
@@ -1106,7 +1118,7 @@ function openHelp(){
 function closeHelp(){
   helpOverlay.classList.remove('open');
   try{ localStorage.setItem(HELP_SEEN_KEY, '1'); }catch(e){}
-  if(currentList().cities.length === 0) openSidebar();
+  if(currentList().cities.length === 0) openSidebarPanel('panelLists');
 }
 helpBtn.addEventListener('click', openHelp);
 closeHelpBtn.addEventListener('click', closeHelp);
@@ -1120,6 +1132,16 @@ function openSidebar(){
 function closeSidebar(){
   sidebar.classList.remove('open');
   overlay.classList.remove('open');
+}
+function setSidebarPanel(panelKey){
+  sidebarTabButtons.forEach(b => b.classList.toggle('active', b.dataset.panel === panelKey));
+  Object.keys(sidebarPanels).forEach(key => {
+    sidebarPanels[key].style.display = (key === panelKey) ? '' : 'none';
+  });
+}
+function openSidebarPanel(panelKey){
+  setSidebarPanel(panelKey);
+  openSidebar();
 }
 openSidebarBtn.addEventListener('click', openSidebar);
 closeSidebarBtn.addEventListener('click', closeSidebar);
@@ -1292,14 +1314,11 @@ function dayWarning(d){
 
 function render(){
   const list = currentList();
-  const isNearby = list.id === NEARBY_LIST_ID;
-  sidebar.classList.toggle('nearby-mode', isNearby);
-  sidebarSubheadEl.textContent = isNearby
-    ? `Steden in "${list.name}" (automatisch, straal 250 km)`
-    : `Steden in "${list.name}"`;
+  const edit = editList();
+  sidebarSubheadEl.textContent = `Steden in "${edit.name}"`;
   if(radarOpen && radarMap) updateRadarMarkers();
-  // chips (sidebar) — cities in the active list
-  chipsEl.innerHTML = list.cities.map(c => `
+  // chips (sidebar) — cities in the group being edited (independent of the main-page tab)
+  chipsEl.innerHTML = edit.cities.map(c => `
     <span class="chip" data-id="${c.id}">
       ${c.name}${c.country ? ', ' + c.country : ''}
       <button class="remove-btn" data-remove="${c.id}" title="Verwijderen">&times;</button>
@@ -1486,6 +1505,17 @@ radarToggleBtn.addEventListener('click', async () => {
   }
 });
 
+function renderListSelect(){
+  ensureEditListId();
+  editListSelect.innerHTML = appData.lists.map(l =>
+    `<option value="${l.id}" ${l.id === editListId ? 'selected' : ''}>${l.name}</option>`
+  ).join('');
+}
+editListSelect.addEventListener('change', () => {
+  editListId = editListSelect.value;
+  render();
+});
+
 function renderTabs(){
   const nearbyTab = refPoint
     ? `<button class="tab nearby-tab ${appData.activeListId === NEARBY_LIST_ID ? 'active' : ''}" data-list="${NEARBY_LIST_ID}">📍 In de buurt</button>`
@@ -1504,6 +1534,8 @@ listTabsEl.addEventListener('click', async (e) => {
     if(list && confirm(`Lijst "${list.name}" verwijderen? De steden erin gaan mee weg.`)){
       appData.lists = appData.lists.filter(l => l.id !== delId);
       appData.activeListId = appData.lists[0].id;
+      ensureEditListId();
+      renderListSelect();
       saveCities();
       renderTabs();
       render();
@@ -1517,16 +1549,22 @@ listTabsEl.addEventListener('click', async (e) => {
       const newList = { id: makeListId(), name: name.trim(), cities: [] };
       appData.lists.push(newList);
       appData.activeListId = newList.id;
+      editListId = newList.id;
       saveCities();
       renderTabs();
+      renderListSelect();
       render();
-      openSidebar();
+      openSidebarPanel('panelLists');
     }
     return;
   }
   const tabBtn = e.target.closest('[data-list]');
   if(tabBtn){
     appData.activeListId = tabBtn.getAttribute('data-list');
+    if(appData.activeListId !== NEARBY_LIST_ID){
+      editListId = appData.activeListId;
+      renderListSelect();
+    }
     saveCities();
     renderTabs();
     render();
@@ -1554,13 +1592,14 @@ async function refreshAll(){
 }
 
 async function addCity(city){
-  const list = currentList();
+  const list = editList();
   if(list.cities.some(c => c.id === city.id)){
     setStatus(`${city.name} staat al in "${list.name}".`, true);
     return false;
   }
   list.cities.push(city);
   saveCities();
+  renderTabs();
   render();
   await refreshWeatherFor(city);
   render();
@@ -1603,14 +1642,7 @@ regionForm.addEventListener('submit', (e) => {
   }
   regionResultsEl.innerHTML = `<div class="region-results">` + hits.map(h => {
     const id = `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}`;
-    const already = currentList().cities.some(c => c.id === id);
-    return `
-      <div class="region-hit">
-        <div>
-          <div class="rh-name">${h.n}</div>
-          <div class="rh-meta">${h.r}, ${h.c} · ${Math.round(h.pop/1000)}k inwoners</div>
-        </div>
-        <button class="rh-add" data-region-add="${id}" ${already ? 'disabled' : ''}>${already ? 'Toegevoegd' : '+ Toevoegen'}</button>
+    const already = editList().cities.some(c => c.id === id);
       </div>`;
   }).join('') + `</div>`;
 });
@@ -1674,13 +1706,7 @@ radiusInput.addEventListener('change', () => {
 });
 
 sidebarTabButtons.forEach(btn => {
-  btn.addEventListener('click', () => {
-    sidebarTabButtons.forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    Object.keys(sidebarPanels).forEach(key => {
-      sidebarPanels[key].style.display = (key === btn.dataset.panel) ? '' : 'none';
-    });
-  });
+  btn.addEventListener('click', () => setSidebarPanel(btn.dataset.panel));
 });
 
 useLocationBtn.addEventListener('click', () => {
@@ -1739,7 +1765,7 @@ nearbyBtn.addEventListener('click', () => {
   }
   nearbyResultsEl.innerHTML = `<div class="region-results">` + hits.map(h => {
     const id = `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}`;
-    const already = currentList().cities.some(c => c.id === id);
+    const already = editList().cities.some(c => c.id === id);
     return `
       <div class="region-hit">
         <div>
@@ -1765,7 +1791,7 @@ nearbyResultsEl.addEventListener('click', async (e) => {
 chipsEl.addEventListener('click', (e) => {
   const id = e.target.getAttribute('data-remove');
   if(!id) return;
-  const list = currentList();
+  const list = editList();
   list.cities = list.cities.filter(c => c.id !== id);
   saveCities();
   render();
@@ -1775,6 +1801,8 @@ chipsEl.addEventListener('click', (e) => {
   await loadCities();
   loadRefPoint();
   renderRefPoint();
+  ensureEditListId();
+  renderListSelect();
   renderTabs();
   render();
   let helpSeen = false;
@@ -1784,7 +1812,7 @@ chipsEl.addEventListener('click', (e) => {
   }else if(!helpSeen){
     openHelp();
   }else{
-    openSidebar();
+    openSidebarPanel('panelLists');
   }
   // auto-refresh every 10 minutes
   setInterval(refreshAll, 10 * 60 * 1000);
