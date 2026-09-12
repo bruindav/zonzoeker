@@ -672,6 +672,8 @@
   }
   .forecast-day.bad-day{
     border-bottom: 3px solid #e0674f;
+  }
+  .forecast-day.bad-day:not(.best-day){
     background: rgba(224,103,79,0.10);
   }
   .forecast-day .dow{
@@ -1192,6 +1194,13 @@ function searchCitiesNearby(radiusKm = 250, limit = 10){
 
 const chipsEl = document.getElementById('chips');
 const listEl = document.getElementById('list');
+listEl.addEventListener('click', (e) => {
+  const badge = e.target.closest('.fc-warn, .fc-uncertain');
+  if(badge){
+    e.stopPropagation();
+    alert(badge.getAttribute('data-detail') || badge.title || '');
+  }
+});
 const statusEl = document.getElementById('status');
 const updatedEl = document.getElementById('updated');
 const form = document.getElementById('addForm');
@@ -1533,15 +1542,15 @@ function cityBlockHtml(c, w, rankLabel, extraClass){
   const strip = (w.forecast || []).map((d, idx) => {
     const warn = dayWarning(d);
     const isBest = idx === bestIdx;
-    const isBad = !isBest && isBadDay(d);
-    const dayClass = isBest ? 'best-day' : (isBad ? 'bad-day' : '');
+    const isBad = isBadDay(d);
+    const dayClass = [isBest ? 'best-day' : '', isBad ? 'bad-day' : ''].filter(Boolean).join(' ');
     const uncertainTitle = d.uncertain
       ? ` — modellen zijn het oneens (${d.rain}% vs ${d.altRain !== undefined ? d.altRain + '%' : weatherDesc(d.altCode)})`
       : '';
     return `
     <div class="forecast-day ${dayClass}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${isBest ? ' — beste dag' : ''}${isBad ? ' — voldoet aan jouw slecht-weer-criteria' : ''}${warn ? ' — ' + warn.label : ''}${uncertainTitle}">
-      ${warn ? `<span class="fc-warn" title="${warn.label}">${warn.icon}</span>` : ''}
-      ${d.uncertain ? `<span class="fc-uncertain" title="Modellen zijn het oneens${uncertainTitle}">❔</span>` : ''}
+      ${warn ? `<span class="fc-warn" data-detail="${warn.label}" title="${warn.label}">${warn.icon}</span>` : ''}
+      ${d.uncertain ? `<span class="fc-uncertain" data-detail="Modellen zijn het oneens${uncertainTitle}" title="Modellen zijn het oneens${uncertainTitle}">❔</span>` : ''}
       <div class="dow">${dayLabel(d.date, idx)}</div>
       ${weatherIcon(d.code, true).replace('rank-icon','fc-icon')}
       <div class="tmax">${d.tmax}°</div>
