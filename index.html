@@ -1643,6 +1643,13 @@ regionForm.addEventListener('submit', (e) => {
   regionResultsEl.innerHTML = `<div class="region-results">` + hits.map(h => {
     const id = `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}`;
     const already = editList().cities.some(c => c.id === id);
+    return `
+      <div class="region-hit">
+        <div>
+          <div class="rh-name">${h.n}</div>
+          <div class="rh-meta">${h.r}, ${h.c} · ${Math.round(h.pop/1000)}k inwoners</div>
+        </div>
+        <button class="rh-add" data-region-add="${id}" ${already ? 'disabled' : ''}>${already ? 'Toegevoegd' : '+ Toevoegen'}</button>
       </div>`;
   }).join('') + `</div>`;
 });
