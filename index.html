@@ -586,6 +586,17 @@
   .rank-list{
     border-top: 1px solid var(--line);
   }
+  .ref-list{
+    border: 1px solid rgba(111,168,181,0.35);
+    border-radius: 10px;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+  .ref-block{
+    border-bottom: none !important;
+    background: rgba(111,168,181,0.07);
+  }
+  .ref-block .rank-num{ color: var(--cool); }
   .rank-block{
     border-bottom: 1px solid var(--line);
     padding: 16px 4px 18px;
@@ -1352,6 +1363,77 @@ function dayWarning(d){
   return null;
 }
 
+function refPointCity(){
+  if(!refPoint) return null;
+  return {
+    id: `ref_${refPoint.lat.toFixed(2)}_${refPoint.lon.toFixed(2)}`,
+    name: refPoint.name, lat: refPoint.lat, lon: refPoint.lon, country: '', _isRef: true
+  };
+}
+
+async function ensureRefWeather(){
+  const rc = refPointCity();
+  if(!rc) return;
+  if(weatherData[rc.id] !== undefined) return;
+  weatherData[rc.id] = null;
+  await refreshWeatherFor(rc);
+  render();
+}
+
+function cityBlockHtml(c, w, rankLabel, extraClass){
+  extraClass = extraClass || '';
+  if(!w){
+    return `
+      <div class="rank-block ${extraClass}">
+        <div class="rank-row">
+          <div class="rank-num">${rankLabel}</div>
+          <div></div>
+          <div class="rank-city"><div class="name">${c.name}</div><div class="desc">laden…</div></div>
+          <div class="rank-detail"></div>
+          <div class="rank-temp">—</div>
+        </div>
+      </div>`;
+  }
+  let route;
+  if(refPoint && !c._isRef){
+    const key = routeKey(c);
+    route = routeCache[key];
+    if(route === undefined) ensureRoute(c);
+  }
+  const distText = (refPoint && !c._isRef)
+    ? (route ? ` · ${route.km} km · ${formatMinutes(route.minutes)}${route.estimated ? ' (schatting)' : ''}` : ' · afstand laden…')
+    : '';
+  const scores = (w.forecast || []).map(d => dayWeatherScore(d));
+  const bestIdx = scores.length ? scores.indexOf(Math.max(...scores)) : -1;
+  const strip = (w.forecast || []).map((d, idx) => {
+    const warn = dayWarning(d);
+    return `
+    <div class="forecast-day ${idx === bestIdx ? 'best-day' : ''}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${idx === bestIdx ? ' — beste dag' : ''}${warn ? ' — ' + warn.label : ''}">
+      ${warn ? `<span class="fc-warn" title="${warn.label}">${warn.icon}</span>` : ''}
+      <div class="dow">${dayLabel(d.date, idx)}</div>
+      ${weatherIcon(d.code, true).replace('rank-icon','fc-icon')}
+      <div class="tmax">${d.tmax}°</div>
+      <div class="tmin">${d.tmin}°</div>
+      <div class="rainbar"><span style="width:${Math.min(100, d.rain)}%"></span></div>
+      <div class="rainpct">${d.rain}%</div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="rank-block ${extraClass}">
+      <div class="rank-row">
+        <div class="rank-num">${rankLabel}</div>
+        <div>${weatherIcon(w.code, w.isDay)}</div>
+        <div class="rank-city">
+          <div class="name">${c.name}${c.country ? ', ' + c.country : ''}</div>
+          <div class="desc">${c._isRef ? 'Vertrekpunt · ' : ''}${weatherDesc(w.code)}${distText}</div>
+        </div>
+        <div class="rank-detail">bewolking ${w.cloud}%</div>
+        <div class="rank-temp">${w.temp}°</div>
+      </div>
+      <div class="forecast-strip">${strip}</div>
+    </div>`;
+}
+
 function render(){
   const list = currentList();
   const edit = editList();
@@ -1365,66 +1447,26 @@ function render(){
     </span>
   `).join('');
 
+  let refHtml = '';
+  if(refPoint){
+    const rc = refPointCity();
+    const w = weatherData[rc.id];
+    if(w === undefined) ensureRefWeather();
+    refHtml = `<div class="ref-list">${cityBlockHtml(rc, w, '📍', 'ref-block')}</div>`;
+  }
+
   if(list.cities.length === 0){
-    listEl.innerHTML = `<div class="empty">Nog geen steden in "${list.name}". Open het menu linksboven om er een toe te voegen.</div>`;
+    listEl.innerHTML = refHtml + `<div class="empty">Nog geen steden in "${list.name}". Open het menu linksboven om er een toe te voegen.</div>`;
     return;
   }
 
   const sorted = [...list.cities].sort((a,b) => zonScore(weatherData[a.id]) - zonScore(weatherData[b.id])).reverse();
 
-  listEl.innerHTML = `<div class="rank-list">` + sorted.map((c, i) => {
-    const w = weatherData[c.id];
-    if(!w){
-      return `
-        <div class="rank-block">
-          <div class="rank-row">
-            <div class="rank-num">${i+1}</div>
-            <div></div>
-            <div class="rank-city"><div class="name">${c.name}</div><div class="desc">laden…</div></div>
-            <div class="rank-detail"></div>
-            <div class="rank-temp">—</div>
-          </div>
-        </div>`;
-    }
-    let route;
-    if(refPoint){
-      const key = routeKey(c);
-      route = routeCache[key];
-      if(route === undefined) ensureRoute(c);
-    }
-    const distText = refPoint
-      ? (route ? ` · ${route.km} km · ${formatMinutes(route.minutes)}${route.estimated ? ' (schatting)' : ''}` : ' · afstand laden…')
-      : '';
-    const scores = (w.forecast || []).map(d => dayWeatherScore(d));
-    const bestIdx = scores.length ? scores.indexOf(Math.max(...scores)) : -1;
-    const strip = (w.forecast || []).map((d, idx) => {
-      const warn = dayWarning(d);
-      return `
-      <div class="forecast-day ${idx === bestIdx ? 'best-day' : ''}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${idx === bestIdx ? ' — beste dag' : ''}${warn ? ' — ' + warn.label : ''}">
-        ${warn ? `<span class="fc-warn" title="${warn.label}">${warn.icon}</span>` : ''}
-        <div class="dow">${dayLabel(d.date, idx)}</div>
-        ${weatherIcon(d.code, true).replace('rank-icon','fc-icon')}
-        <div class="tmax">${d.tmax}°</div>
-        <div class="tmin">${d.tmin}°</div>
-        <div class="rainbar"><span style="width:${Math.min(100, d.rain)}%"></span></div>
-        <div class="rainpct">${d.rain}%</div>
-      </div>`;
-    }).join('');
-    return `
-      <div class="rank-block">
-        <div class="rank-row">
-          <div class="rank-num">${i+1}</div>
-          <div>${weatherIcon(w.code, w.isDay)}</div>
-          <div class="rank-city">
-            <div class="name">${c.name}${c.country ? ', ' + c.country : ''}</div>
-            <div class="desc">${weatherDesc(w.code)}${distText}</div>
-          </div>
-          <div class="rank-detail">bewolking ${w.cloud}%</div>
-          <div class="rank-temp">${w.temp}°</div>
-        </div>
-        <div class="forecast-strip">${strip}</div>
-      </div>`;
-  }).join('') + `</div>`;
+  const rankHtml = `<div class="rank-list">` + sorted.map((c, i) =>
+    cityBlockHtml(c, weatherData[c.id], i + 1)
+  ).join('') + `</div>`;
+
+  listEl.innerHTML = refHtml + rankHtml;
 }
 
 // ---- Radar map ----
@@ -1639,10 +1681,12 @@ async function refreshWeatherFor(city){
 
 async function refreshAll(){
   const list = currentList();
-  if(list.cities.length === 0){ render(); return; }
+  const rc = refPointCity();
+  const tasks = rc ? [...list.cities, rc] : [...list.cities];
+  if(tasks.length === 0){ render(); return; }
   setStatus('Weer wordt opgehaald…');
   render();
-  await Promise.all(list.cities.map(refreshWeatherFor));
+  await Promise.all(tasks.map(refreshWeatherFor));
   render();
   updatedEl.textContent = new Date().toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit'});
   setStatus('');
