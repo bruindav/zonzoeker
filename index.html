@@ -1006,6 +1006,11 @@
       <input type="range" id="radiusInput" min="50" max="500" step="25" value="250">
     </div>
 
+    <div class="radius-control">
+      <label for="popInput">Toon steden vanaf <strong id="popValue">100.000</strong> inwoners</label>
+      <input type="range" id="popInput" min="10000" max="1000000" step="10000" value="100000">
+    </div>
+
     <button class="ref-btn nearby-btn" id="nearbyBtn">Zoek grotere steden binnen <span id="nearbyBtnKm">250</span> km</button>
     <div id="nearbyResults"></div>
   </div>
@@ -1296,9 +1301,11 @@ function searchCitiesByRegion(query, limit = 8){
 // ---- Vertrekpunt & afstand ----
 let refPoint = null; // { name, lat, lon }
 let travelRadius = 250; // km, hoe ver de gebruiker maximaal wil reizen
+let minPopulation = 100000; // inwoners, ondergrens voor "grotere steden" zoekacties
 let routeCache = {}; // "reflat_reflon_cityId" -> { km, minutes, estimated } | null (pending)
 const REF_STORAGE_KEY = 'zonzoeker:refPoint';
 const RADIUS_STORAGE_KEY = 'zonzoeker:travelRadius';
+const POP_STORAGE_KEY = 'zonzoeker:minPopulation';
 
 function haversineKm(lat1, lon1, lat2, lon2){
   const R = 6371;
@@ -1350,7 +1357,7 @@ async function ensureRoute(city){
 function searchCitiesNearby(radiusKm = 250, limit = 10){
   if(!refPoint) return [];
   return EU_CITIES
-    .filter(c => c.pop >= 100000)
+    .filter(c => c.pop >= minPopulation)
     .map(c => ({ ...c, dist: haversineKm(refPoint.lat, refPoint.lon, c.lat, c.lon) }))
     .filter(c => c.dist <= radiusKm)
     .sort((a, b) => a.dist - b.dist)
@@ -1447,6 +1454,8 @@ const nearbyResultsEl = document.getElementById('nearbyResults');
 const radiusInput = document.getElementById('radiusInput');
 const radiusValueEl = document.getElementById('radiusValue');
 const nearbyBtnKmEl = document.getElementById('nearbyBtnKm');
+const popInput = document.getElementById('popInput');
+const popValueEl = document.getElementById('popValue');
 const setRainPct = document.getElementById('setRainPct');
 const setRainHours = document.getElementById('setRainHours');
 const setMinTemp = document.getElementById('setMinTemp');
@@ -2046,6 +2055,7 @@ let radarFrameIndex = 0;
 let radarPlaying = false;
 let radarTimer = null;
 let radarMarkers = [];
+let radarRadiusCircle = null;
 let radarOpen = false;
 
 const radarToggleBtn = document.getElementById('radarToggle');
@@ -2146,6 +2156,19 @@ function updateRadarMarkers(){
   if(!radarMap) return;
   radarMarkers.forEach(m => radarMap.removeLayer(m));
   radarMarkers = [];
+
+  if(radarRadiusCircle){ radarMap.removeLayer(radarRadiusCircle); radarRadiusCircle = null; }
+  if(refPoint){
+    radarRadiusCircle = L.circle([refPoint.lat, refPoint.lon], {
+      radius: travelRadius * 1000,
+      color: '#6fa8b5',
+      weight: 1.5,
+      dashArray: '5 7',
+      fillColor: '#6fa8b5',
+      fillOpacity: 0.06
+    }).addTo(radarMap);
+  }
+
   const rc = refPointCity();
   const cities = rc ? [...currentList().cities, rc] : [...currentList().cities];
   const sorted = [...cities].sort((a,b) => zonScore(weatherData[a.id]) - zonScore(weatherData[b.id])).reverse();
@@ -2382,9 +2405,16 @@ function loadRefPoint(){
     const rawRadius = localStorage.getItem(RADIUS_STORAGE_KEY);
     if(rawRadius) travelRadius = parseInt(rawRadius, 10) || 250;
   }catch(e){ /* ignore */ }
+  try{
+    const rawPop = localStorage.getItem(POP_STORAGE_KEY);
+    if(rawPop) minPopulation = parseInt(rawPop, 10) || 100000;
+  }catch(e){ /* ignore */ }
 }
 function saveRefPoint(){
   try{ localStorage.setItem(REF_STORAGE_KEY, JSON.stringify(refPoint)); }catch(e){ /* ignore */ }
+}
+function savePopulation(){
+  try{ localStorage.setItem(POP_STORAGE_KEY, String(minPopulation)); }catch(e){ /* ignore */ }
 }
 function saveRadius(){
   try{ localStorage.setItem(RADIUS_STORAGE_KEY, String(travelRadius)); }catch(e){ /* ignore */ }
@@ -2396,6 +2426,8 @@ function renderRefPoint(){
   radiusInput.value = travelRadius;
   radiusValueEl.textContent = travelRadius;
   nearbyBtnKmEl.textContent = travelRadius;
+  popInput.value = minPopulation;
+  popValueEl.textContent = minPopulation.toLocaleString('nl-NL');
 }
 function setRefPoint(point){
   refPoint = point;
@@ -2415,6 +2447,19 @@ radiusInput.addEventListener('input', () => {
 radiusInput.addEventListener('change', () => {
   saveRadius();
   routeCache = {};
+  if(appData.activeListId === NEARBY_LIST_ID){
+    renderTabs();
+    render();
+    refreshAll();
+  }
+});
+
+popInput.addEventListener('input', () => {
+  minPopulation = parseInt(popInput.value, 10);
+  popValueEl.textContent = minPopulation.toLocaleString('nl-NL');
+});
+popInput.addEventListener('change', () => {
+  savePopulation();
   if(appData.activeListId === NEARBY_LIST_ID){
     renderTabs();
     render();
