@@ -1100,11 +1100,11 @@
 
     <button class="ref-btn" id="resetSettingsBtn">Terugzetten naar standaard</button>
 
-    <span class="mini-label">Voorkeursmodel</span>
-    <p class="sidebar-intro">Welk model geldt als hoofdweergave? Het andere model wordt gebruikt voor de ❔-vergelijking.</p>
+    <span class="mini-label">Vergelijkingsmodel</span>
+    <p class="sidebar-intro">De hoofdweergave blijft altijd het standaardmodel (dat geeft een regenkans-percentage). Kies hier welk apart model gebruikt wordt voor de ❔-vergelijking (op basis van neerslag in mm).</p>
     <div class="model-toggle">
-      <button class="model-toggle-btn active" id="modelBestMatchBtn" data-model="best_match">Standaard</button>
-      <button class="model-toggle-btn" id="modelIconEpsBtn" data-model="icon_eu_eps">DWD ICON-EU EPS</button>
+      <button class="model-toggle-btn active" id="modelBestMatchBtn" data-model="icon_d2">DWD ICON-D2</button>
+      <button class="model-toggle-btn" id="modelIconEpsBtn" data-model="knmi">KNMI HARMONIE</button>
     </div>
   </div>
 </aside>
@@ -1146,7 +1146,7 @@
 
 
 <script>
-const APP_VERSION = '2026-09-13 14:10 — Voorkeursmodel-toggle (Standaard / ICON-EU EPS)';
+const APP_VERSION = '2026-09-13 14:35 — Fix: hoofdweergave altijd standaardmodel, keuze geldt alleen vergelijking';
 const OLD_STORAGE_KEY = 'zonzoeker:cities';
 const STORAGE_KEY = 'zonzoeker:lists';
 const NEARBY_LIST_ID = '__nearby__';
@@ -1339,9 +1339,10 @@ function searchCitiesByRegion(query, limit = 8){
 // ---- Vertrekpunt & afstand ----
 let refPoint = null; // { name, lat, lon }
 let travelRadius = 250; // km, hoe ver de gebruiker maximaal wil reizen
-let preferredModel = 'best_match'; // 'best_match' of 'icon_eu_eps' — welk model als hoofdbron geldt
-const MODEL_STORAGE_KEY = 'zonzoeker:preferredModel';
-const MODEL_LABELS = { best_match: 'Standaard (best_match)', icon_eu_eps: 'DWD ICON-EU EPS' };
+let compareModelKey = 'icon_d2'; // welk model gebruikt wordt voor de ❔-vergelijking (mm-gebaseerd)
+const MODEL_STORAGE_KEY = 'zonzoeker:compareModel';
+const COMPARE_MODELS = { icon_d2: 'icon_d2', knmi: 'knmi_harmonie_arome_europe' };
+const MODEL_LABELS = { icon_d2: 'DWD ICON-D2 (Duitsland)', knmi: 'KNMI HARMONIE (Benelux)' };
 let minPopulation = 100000; // inwoners, ondergrens voor "grotere steden" zoekacties
 let routeCache = {}; // "reflat_reflon_cityId" -> { km, minutes, estimated } | null (pending)
 const REF_STORAGE_KEY = 'zonzoeker:refPoint';
@@ -1872,25 +1873,23 @@ function bucketDaytimeHours(hourly, fields){
 }
 
 async function fetchWeather(city){
-  const HOURLY_VARS = 'temperature_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m';
-  const bestMatchUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&hourly=${HOURLY_VARS}&forecast_days=10&timezone=auto`;
-  const iconEpsUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=${HOURLY_VARS}&models=dwd_icon_eu_eps&forecast_days=10&timezone=auto`;
+  const primaryUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m&forecast_days=10&timezone=auto`;
+  const compareModel = COMPARE_MODELS[compareModelKey] || COMPARE_MODELS.icon_d2;
+  const altUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=weather_code,precipitation&models=${compareModel}&forecast_days=10&timezone=auto`;
 
-  const res = await fetch(bestMatchUrl);
+  const res = await fetch(primaryUrl);
   const data = await res.json();
   const cur = data.current;
 
-  const bestMatchByDate = bucketDaytimeHours(data.hourly, ['temperature_2m', 'precipitation_probability', 'precipitation', 'weather_code', 'wind_speed_10m']);
+  const byDate = bucketDaytimeHours(data.hourly, ['temperature_2m', 'precipitation_probability', 'precipitation', 'weather_code', 'wind_speed_10m']);
 
-  let iconByDate = {};
+  let altByDate = {};
   try{
-    const iconRes = await fetch(iconEpsUrl);
-    const iconData = await iconRes.json();
-    iconByDate = bucketDaytimeHours(iconData.hourly, ['temperature_2m', 'precipitation_probability', 'precipitation', 'weather_code', 'wind_speed_10m']);
+    const altRes = await fetch(altUrl);
+    const altData = await altRes.json();
+    altByDate = bucketDaytimeHours(altData.hourly, ['weather_code', 'precipitation']);
   }catch(e){ /* comparison model optional; skip silently on failure */ }
 
-  const byDate = preferredModel === 'icon_eu_eps' ? iconByDate : bestMatchByDate;
-  const altByDate = preferredModel === 'icon_eu_eps' ? bestMatchByDate : iconByDate;
   const dates = Object.keys(byDate).sort().slice(0, 10);
 
   const forecast = dates.map(date => {
@@ -1906,6 +1905,7 @@ async function fetchWeather(city){
     const rainHours = rains.filter(p => p >= 50).length;
     const wind = winds.length ? Math.round(Math.max(...winds)) : 0;
     const code = codes.length ? worstWeatherCode(codes) : 0;
+    const avgPrecip = precips.length ? precips.reduce((a, x) => a + x, 0) / precips.length : 0;
     const hours = (b.hour || []).map((h, hi) => ({
       hour: h,
       temp: temps[hi] !== undefined ? Math.round(temps[hi]) : null,
@@ -1915,20 +1915,18 @@ async function fetchWeather(city){
       code: codes[hi]
     }));
 
-    let uncertain = false, altCode, altRain, altTmax;
+    let uncertain = false, altCode, altPrecip;
     const ab = altByDate[date];
     if(ab && ab.weather_code && ab.weather_code.length){
       altCode = worstWeatherCode(ab.weather_code);
-      const altRains = ab.precipitation_probability || [];
-      altRain = altRains.length ? Math.round(altRains.reduce((a, x) => a + x, 0) / altRains.length) : undefined;
-      const altTemps = ab.temperature_2m || [];
-      altTmax = altTemps.length ? Math.round(Math.max(...altTemps)) : undefined;
+      const altPrecips = ab.precipitation || [];
+      altPrecip = altPrecips.length ? Math.round((altPrecips.reduce((a, x) => a + x, 0) / altPrecips.length) * 10) / 10 : undefined;
       const categoryMismatch = weatherCodeCategory(code) !== weatherCodeCategory(altCode);
-      const rainMismatch = (altRain !== undefined) && Math.abs(altRain - rain) >= 25;
-      uncertain = categoryMismatch || rainMismatch;
+      const amountMismatch = (altPrecip !== undefined) && Math.abs(altPrecip - avgPrecip) >= 0.3;
+      uncertain = categoryMismatch || amountMismatch;
     }
 
-    return { date, code, tmax, tmin, rain, rainHours, wind, uncertain, altCode, altRain, altTmax, hours };
+    return { date, code, tmax, tmin, rain, rainHours, wind, uncertain, altCode, altPrecip, hours };
   });
 
   return {
@@ -1959,15 +1957,15 @@ function saveBadWeather(){
 function loadPreferredModel(){
   try{
     const raw = localStorage.getItem(MODEL_STORAGE_KEY);
-    if(raw === 'best_match' || raw === 'icon_eu_eps') preferredModel = raw;
+    if(raw === 'icon_d2' || raw === 'knmi') compareModelKey = raw;
   }catch(e){ /* ignore */ }
 }
 function savePreferredModel(){
-  try{ localStorage.setItem(MODEL_STORAGE_KEY, preferredModel); }catch(e){ /* ignore */ }
+  try{ localStorage.setItem(MODEL_STORAGE_KEY, compareModelKey); }catch(e){ /* ignore */ }
 }
 function renderPreferredModel(){
-  document.getElementById('modelBestMatchBtn').classList.toggle('active', preferredModel === 'best_match');
-  document.getElementById('modelIconEpsBtn').classList.toggle('active', preferredModel === 'icon_eu_eps');
+  document.getElementById('modelBestMatchBtn').classList.toggle('active', compareModelKey === 'icon_d2');
+  document.getElementById('modelIconEpsBtn').classList.toggle('active', compareModelKey === 'knmi');
 }
 function severityStep(amount, lightMax, mediumMax){
   if(amount <= 0) return 0;
@@ -2047,7 +2045,7 @@ function cityBlockHtml(c, w, rankLabel, extraClass){
     const sevLabel = sev === 3 ? 'ver onder je norm' : sev === 2 ? 'redelijk onder je norm' : sev === 1 ? 'net onder je norm' : '';
     const dayClass = [isBest ? 'best-day' : '', sev > 0 ? `bad-day-${sev}` : ''].filter(Boolean).join(' ');
     const uncertainTitle = d.uncertain
-      ? ` — ${MODEL_LABELS[preferredModel]}: ${d.rain}% vs ${MODEL_LABELS[preferredModel === 'icon_eu_eps' ? 'best_match' : 'icon_eu_eps']}: ${d.altRain !== undefined ? d.altRain + '%' : weatherDesc(d.altCode)}`
+      ? ` — Standaard: ${weatherDesc(d.code)} vs ${MODEL_LABELS[compareModelKey]}: ${weatherDesc(d.altCode)}${d.altPrecip !== undefined ? ` (${d.altPrecip} mm/u)` : ''}`
       : '';
     return `
     <div class="forecast-day ${dayClass}" data-city-id="${c.id}" data-day-idx="${idx}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${isBest ? ' — beste dag' : ''}${sev > 0 ? ' — ' + sevLabel : ''}${warn ? ' — ' + warn.label : ''}${uncertainTitle}">
@@ -2154,16 +2152,16 @@ resetSettingsBtn.addEventListener('click', () => {
   render();
 });
 
-document.getElementById('modelBestMatchBtn').addEventListener('click', () => setPreferredModel('best_match'));
-document.getElementById('modelIconEpsBtn').addEventListener('click', () => setPreferredModel('icon_eu_eps'));
+document.getElementById('modelBestMatchBtn').addEventListener('click', () => setPreferredModel('icon_d2'));
+document.getElementById('modelIconEpsBtn').addEventListener('click', () => setPreferredModel('knmi'));
 
 function setPreferredModel(model){
-  if(model === preferredModel) return;
-  preferredModel = model;
+  if(model === compareModelKey) return;
+  compareModelKey = model;
   savePreferredModel();
   renderPreferredModel();
   weatherData = {};
-  showToast(`Hoofdmodel: ${MODEL_LABELS[model]}. Weer wordt opnieuw opgehaald…`);
+  showToast(`Vergelijkingsmodel: ${MODEL_LABELS[model]}. Weer wordt opnieuw opgehaald…`);
   render();
   refreshAll();
 }
