@@ -533,6 +533,28 @@
     font-size: 0.88rem;
     text-align:right;
   }
+  .model-toggle{
+    display:flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .model-toggle-btn{
+    flex:1;
+    background: rgba(238,241,238,0.05);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    border-radius: 8px;
+    padding: 10px 8px;
+    font-size: 0.82rem;
+    font-weight:600;
+    font-family:'Inter',sans-serif;
+    cursor:pointer;
+  }
+  .model-toggle-btn.active{
+    background: rgba(232,163,61,0.15);
+    border-color: rgba(232,163,61,0.5);
+    color: var(--gold-soft);
+  }
 
   .ref-current{
     font-size: 0.82rem;
@@ -1077,6 +1099,13 @@
     </label>
 
     <button class="ref-btn" id="resetSettingsBtn">Terugzetten naar standaard</button>
+
+    <span class="mini-label">Voorkeursmodel</span>
+    <p class="sidebar-intro">Welk model geldt als hoofdweergave? Het andere model wordt gebruikt voor de ❔-vergelijking.</p>
+    <div class="model-toggle">
+      <button class="model-toggle-btn active" id="modelBestMatchBtn" data-model="best_match">Standaard</button>
+      <button class="model-toggle-btn" id="modelIconEpsBtn" data-model="icon_eu_eps">DWD ICON-EU EPS</button>
+    </div>
   </div>
 </aside>
 
@@ -1117,7 +1146,7 @@
 
 
 <script>
-const APP_VERSION = '2026-09-13 13:45 — DWD ICON-EU EPS vergelijking (%)';
+const APP_VERSION = '2026-09-13 14:10 — Voorkeursmodel-toggle (Standaard / ICON-EU EPS)';
 const OLD_STORAGE_KEY = 'zonzoeker:cities';
 const STORAGE_KEY = 'zonzoeker:lists';
 const NEARBY_LIST_ID = '__nearby__';
@@ -1310,6 +1339,9 @@ function searchCitiesByRegion(query, limit = 8){
 // ---- Vertrekpunt & afstand ----
 let refPoint = null; // { name, lat, lon }
 let travelRadius = 250; // km, hoe ver de gebruiker maximaal wil reizen
+let preferredModel = 'best_match'; // 'best_match' of 'icon_eu_eps' — welk model als hoofdbron geldt
+const MODEL_STORAGE_KEY = 'zonzoeker:preferredModel';
+const MODEL_LABELS = { best_match: 'Standaard (best_match)', icon_eu_eps: 'DWD ICON-EU EPS' };
 let minPopulation = 100000; // inwoners, ondergrens voor "grotere steden" zoekacties
 let routeCache = {}; // "reflat_reflon_cityId" -> { km, minutes, estimated } | null (pending)
 const REF_STORAGE_KEY = 'zonzoeker:refPoint';
@@ -1840,22 +1872,25 @@ function bucketDaytimeHours(hourly, fields){
 }
 
 async function fetchWeather(city){
-  const primaryUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m&forecast_days=10&timezone=auto`;
-  const altUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=weather_code,precipitation_probability&models=dwd_icon_eu_eps&forecast_days=10&timezone=auto`;
+  const HOURLY_VARS = 'temperature_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m';
+  const bestMatchUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&hourly=${HOURLY_VARS}&forecast_days=10&timezone=auto`;
+  const iconEpsUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=${HOURLY_VARS}&models=dwd_icon_eu_eps&forecast_days=10&timezone=auto`;
 
-  const res = await fetch(primaryUrl);
+  const res = await fetch(bestMatchUrl);
   const data = await res.json();
   const cur = data.current;
 
-  const byDate = bucketDaytimeHours(data.hourly, ['temperature_2m', 'precipitation_probability', 'precipitation', 'weather_code', 'wind_speed_10m']);
+  const bestMatchByDate = bucketDaytimeHours(data.hourly, ['temperature_2m', 'precipitation_probability', 'precipitation', 'weather_code', 'wind_speed_10m']);
 
-  let altByDate = {};
+  let iconByDate = {};
   try{
-    const altRes = await fetch(altUrl);
-    const altData = await altRes.json();
-    altByDate = bucketDaytimeHours(altData.hourly, ['weather_code', 'precipitation_probability']);
+    const iconRes = await fetch(iconEpsUrl);
+    const iconData = await iconRes.json();
+    iconByDate = bucketDaytimeHours(iconData.hourly, ['temperature_2m', 'precipitation_probability', 'precipitation', 'weather_code', 'wind_speed_10m']);
   }catch(e){ /* comparison model optional; skip silently on failure */ }
 
+  const byDate = preferredModel === 'icon_eu_eps' ? iconByDate : bestMatchByDate;
+  const altByDate = preferredModel === 'icon_eu_eps' ? bestMatchByDate : iconByDate;
   const dates = Object.keys(byDate).sort().slice(0, 10);
 
   const forecast = dates.map(date => {
@@ -1880,18 +1915,20 @@ async function fetchWeather(city){
       code: codes[hi]
     }));
 
-    let uncertain = false, altCode, altRain;
+    let uncertain = false, altCode, altRain, altTmax;
     const ab = altByDate[date];
     if(ab && ab.weather_code && ab.weather_code.length){
       altCode = worstWeatherCode(ab.weather_code);
       const altRains = ab.precipitation_probability || [];
       altRain = altRains.length ? Math.round(altRains.reduce((a, x) => a + x, 0) / altRains.length) : undefined;
+      const altTemps = ab.temperature_2m || [];
+      altTmax = altTemps.length ? Math.round(Math.max(...altTemps)) : undefined;
       const categoryMismatch = weatherCodeCategory(code) !== weatherCodeCategory(altCode);
       const rainMismatch = (altRain !== undefined) && Math.abs(altRain - rain) >= 25;
       uncertain = categoryMismatch || rainMismatch;
     }
 
-    return { date, code, tmax, tmin, rain, rainHours, wind, uncertain, altCode, altRain, hours };
+    return { date, code, tmax, tmin, rain, rainHours, wind, uncertain, altCode, altRain, altTmax, hours };
   });
 
   return {
@@ -1917,6 +1954,20 @@ function loadBadWeather(){
 }
 function saveBadWeather(){
   try{ localStorage.setItem(BAD_WEATHER_KEY, JSON.stringify(badWeather)); }catch(e){ /* ignore */ }
+}
+
+function loadPreferredModel(){
+  try{
+    const raw = localStorage.getItem(MODEL_STORAGE_KEY);
+    if(raw === 'best_match' || raw === 'icon_eu_eps') preferredModel = raw;
+  }catch(e){ /* ignore */ }
+}
+function savePreferredModel(){
+  try{ localStorage.setItem(MODEL_STORAGE_KEY, preferredModel); }catch(e){ /* ignore */ }
+}
+function renderPreferredModel(){
+  document.getElementById('modelBestMatchBtn').classList.toggle('active', preferredModel === 'best_match');
+  document.getElementById('modelIconEpsBtn').classList.toggle('active', preferredModel === 'icon_eu_eps');
 }
 function severityStep(amount, lightMax, mediumMax){
   if(amount <= 0) return 0;
@@ -1996,7 +2047,7 @@ function cityBlockHtml(c, w, rankLabel, extraClass){
     const sevLabel = sev === 3 ? 'ver onder je norm' : sev === 2 ? 'redelijk onder je norm' : sev === 1 ? 'net onder je norm' : '';
     const dayClass = [isBest ? 'best-day' : '', sev > 0 ? `bad-day-${sev}` : ''].filter(Boolean).join(' ');
     const uncertainTitle = d.uncertain
-      ? ` — modellen zijn het oneens (${d.rain}% vs ${d.altRain !== undefined ? d.altRain + '%' : weatherDesc(d.altCode)})`
+      ? ` — ${MODEL_LABELS[preferredModel]}: ${d.rain}% vs ${MODEL_LABELS[preferredModel === 'icon_eu_eps' ? 'best_match' : 'icon_eu_eps']}: ${d.altRain !== undefined ? d.altRain + '%' : weatherDesc(d.altCode)}`
       : '';
     return `
     <div class="forecast-day ${dayClass}" data-city-id="${c.id}" data-day-idx="${idx}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${isBest ? ' — beste dag' : ''}${sev > 0 ? ' — ' + sevLabel : ''}${warn ? ' — ' + warn.label : ''}${uncertainTitle}">
@@ -2102,6 +2153,20 @@ resetSettingsBtn.addEventListener('click', () => {
   renderBadWeatherInputs();
   render();
 });
+
+document.getElementById('modelBestMatchBtn').addEventListener('click', () => setPreferredModel('best_match'));
+document.getElementById('modelIconEpsBtn').addEventListener('click', () => setPreferredModel('icon_eu_eps'));
+
+function setPreferredModel(model){
+  if(model === preferredModel) return;
+  preferredModel = model;
+  savePreferredModel();
+  renderPreferredModel();
+  weatherData = {};
+  showToast(`Hoofdmodel: ${MODEL_LABELS[model]}. Weer wordt opnieuw opgehaald…`);
+  render();
+  refreshAll();
+}
 
 async function initRadarIfNeeded(){
   if(radarMap) return;
@@ -2576,6 +2641,8 @@ chipsEl.addEventListener('click', (e) => {
   renderRefPoint();
   loadBadWeather();
   renderBadWeatherInputs();
+  loadPreferredModel();
+  renderPreferredModel();
   ensureEditListId();
   renderListSelect();
   renderTabs();
