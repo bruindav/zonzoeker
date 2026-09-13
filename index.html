@@ -135,6 +135,13 @@
     font-family:'Inter',sans-serif;
   }
   .help-close-btn:hover{ background: var(--gold-soft); }
+  .help-version{
+    text-align:center;
+    font-size: 0.7rem;
+    color: rgba(238,241,238,0.35);
+    margin: 12px 0 0;
+    font-family: 'Inter', sans-serif;
+  }
 
   .toast{
     position: fixed;
@@ -949,6 +956,7 @@
       <p>Zet de pagina via je browser ("Zet op beginscherm" / "Toevoegen aan startscherm") op je telefoon voor het zon-icoon en volledig scherm.</p>
     </div>
     <button class="help-close-btn" id="closeHelpBtn">Begrepen</button>
+    <p class="help-version" id="helpVersion"></p>
   </div>
 </div>
 
@@ -1109,6 +1117,7 @@
 
 
 <script>
+const APP_VERSION = '2026-09-13 13:20 — KNMI mm-vergelijking';
 const OLD_STORAGE_KEY = 'zonzoeker:cities';
 const STORAGE_KEY = 'zonzoeker:lists';
 const NEARBY_LIST_ID = '__nearby__';
@@ -1491,6 +1500,8 @@ const HELP_SEEN_KEY = 'zonzoeker:helpSeen';
 
 function openHelp(){
   helpOverlay.classList.add('open');
+  const versionEl = document.getElementById('helpVersion');
+  if(versionEl) versionEl.textContent = `Versie: ${APP_VERSION}`;
 }
 function closeHelp(){
   helpOverlay.classList.remove('open');
