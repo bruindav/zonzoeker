@@ -2581,6 +2581,45 @@ chipsEl.addEventListener('click', (e) => {
   // auto-refresh every 10 minutes
   setInterval(refreshAll, 10 * 60 * 1000);
 })();
+
+// ---- Terugknop opvangen: eerst overlays sluiten, dan pas de app verlaten ----
+let backGuardArmed = true;
+history.pushState({ zonzoekerGuard: true }, '', location.href);
+
+window.addEventListener('popstate', () => {
+  if(dialogOverlay.classList.contains('open')){
+    closeDialog(dialogIsPrompt ? null : false);
+    history.pushState({ zonzoekerGuard: true }, '', location.href);
+    return;
+  }
+  if(hourOverlay.classList.contains('open')){
+    closeHourModal();
+    history.pushState({ zonzoekerGuard: true }, '', location.href);
+    return;
+  }
+  if(helpOverlay.classList.contains('open')){
+    closeHelp();
+    history.pushState({ zonzoekerGuard: true }, '', location.href);
+    return;
+  }
+  if(sidebar.classList.contains('open')){
+    closeSidebar();
+    history.pushState({ zonzoekerGuard: true }, '', location.href);
+    return;
+  }
+  if(radarOpen){
+    closeRadarPanel();
+    history.pushState({ zonzoekerGuard: true }, '', location.href);
+    return;
+  }
+  if(backGuardArmed){
+    backGuardArmed = false;
+    showToast('Druk nogmaals op terug om Zonzoeker te sluiten');
+    history.pushState({ zonzoekerGuard: true }, '', location.href);
+    setTimeout(() => { backGuardArmed = true; }, 2200);
+  }
+  // tweede keer binnen 2,2s: geen nieuwe state pushen, dus de volgende terugknop sluit de app echt
+});
 </script>
 </body>
 </html>
