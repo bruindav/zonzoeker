@@ -1830,7 +1830,7 @@ function bucketDaytimeHours(hourly, fields){
 
 async function fetchWeather(city){
   const primaryUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,cloud_cover,weather_code,is_day&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m&forecast_days=10&timezone=auto`;
-  const altUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=weather_code,precipitation_probability&models=knmi_harmonie_arome_europe&forecast_days=10&timezone=auto`;
+  const altUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=weather_code,precipitation&models=knmi_harmonie_arome_europe&forecast_days=10&timezone=auto`;
 
   const res = await fetch(primaryUrl);
   const data = await res.json();
@@ -1842,7 +1842,7 @@ async function fetchWeather(city){
   try{
     const altRes = await fetch(altUrl);
     const altData = await altRes.json();
-    altByDate = bucketDaytimeHours(altData.hourly, ['weather_code', 'precipitation_probability']);
+    altByDate = bucketDaytimeHours(altData.hourly, ['weather_code', 'precipitation']);
   }catch(e){ /* comparison model optional; skip silently on failure */ }
 
   const dates = Object.keys(byDate).sort().slice(0, 10);
@@ -1860,6 +1860,7 @@ async function fetchWeather(city){
     const rainHours = rains.filter(p => p >= 50).length;
     const wind = winds.length ? Math.round(Math.max(...winds)) : 0;
     const code = codes.length ? worstWeatherCode(codes) : 0;
+    const avgPrecip = precips.length ? precips.reduce((a, x) => a + x, 0) / precips.length : 0;
     const hours = (b.hour || []).map((h, hi) => ({
       hour: h,
       temp: temps[hi] !== undefined ? Math.round(temps[hi]) : null,
@@ -1869,18 +1870,18 @@ async function fetchWeather(city){
       code: codes[hi]
     }));
 
-    let uncertain = false, altCode, altRain;
+    let uncertain = false, altCode, altPrecip;
     const ab = altByDate[date];
     if(ab && ab.weather_code && ab.weather_code.length){
       altCode = worstWeatherCode(ab.weather_code);
-      const altRains = ab.precipitation_probability || [];
-      altRain = altRains.length ? Math.round(altRains.reduce((a, x) => a + x, 0) / altRains.length) : undefined;
+      const altPrecips = ab.precipitation || [];
+      altPrecip = altPrecips.length ? altPrecips.reduce((a, x) => a + x, 0) / altPrecips.length : undefined;
       const categoryMismatch = weatherCodeCategory(code) !== weatherCodeCategory(altCode);
-      const rainMismatch = (altRain !== undefined) && Math.abs(altRain - rain) >= 30;
-      uncertain = categoryMismatch || rainMismatch;
+      const amountMismatch = (altPrecip !== undefined) && Math.abs(altPrecip - avgPrecip) >= 1;
+      uncertain = categoryMismatch || amountMismatch;
     }
 
-    return { date, code, tmax, tmin, rain, rainHours, wind, uncertain, altCode, altRain, hours };
+    return { date, code, tmax, tmin, rain, rainHours, wind, uncertain, altCode, altPrecip, hours };
   });
 
   return {
@@ -1985,7 +1986,7 @@ function cityBlockHtml(c, w, rankLabel, extraClass){
     const sevLabel = sev === 3 ? 'ver onder je norm' : sev === 2 ? 'redelijk onder je norm' : sev === 1 ? 'net onder je norm' : '';
     const dayClass = [isBest ? 'best-day' : '', sev > 0 ? `bad-day-${sev}` : ''].filter(Boolean).join(' ');
     const uncertainTitle = d.uncertain
-      ? ` — modellen zijn het oneens (${d.rain}% vs ${d.altRain !== undefined ? d.altRain + '%' : weatherDesc(d.altCode)})`
+      ? ` — modellen zijn het oneens (${weatherDesc(d.code)} vs ${weatherDesc(d.altCode)}${d.altPrecip !== undefined ? `, ${d.altPrecip.toFixed(1)} mm/u volgens KNMI` : ''})`
       : '';
     return `
     <div class="forecast-day ${dayClass}" data-city-id="${c.id}" data-day-idx="${idx}" title="${weatherDesc(d.code)}, ${d.rain}% kans op neerslag${isBest ? ' — beste dag' : ''}${sev > 0 ? ' — ' + sevLabel : ''}${warn ? ' — ' + warn.label : ''}${uncertainTitle}">
