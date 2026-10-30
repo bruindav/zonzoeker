@@ -1146,7 +1146,7 @@
 
 
 <script>
-const APP_VERSION = '2026-09-13 14:35 — Fix: hoofdweergave altijd standaardmodel, keuze geldt alleen vergelijking';
+const APP_VERSION = '2026-10-30 — fix-1: help direct te openen met #help achter het adres';
 const OLD_STORAGE_KEY = 'zonzoeker:cities';
 const STORAGE_KEY = 'zonzoeker:lists';
 const NEARBY_LIST_ID = '__nearby__';
@@ -1538,10 +1538,14 @@ function openHelp(){
 }
 function closeHelp(){
   helpOverlay.classList.remove('open');
+  // fix-1: #help uit het adres halen, zodat de help niet opnieuw opent bij verversen
+  if(location.hash === '#help') history.replaceState(history.state, '', location.pathname + location.search);
   try{ localStorage.setItem(HELP_SEEN_KEY, '1'); }catch(e){}
   if(currentList().cities.length === 0) openSidebarPanel('panelLists');
 }
 helpBtn.addEventListener('click', openHelp);
+// fix-1: help openen via #help achter het adres (bijv. vanuit DigidaveStore)
+window.addEventListener('hashchange', () => { if(location.hash === '#help') openHelp(); });
 closeHelpBtn.addEventListener('click', closeHelp);
 closeHelpMainBtn.addEventListener('click', closeHelp);
 helpOverlay.addEventListener('click', (e) => { if(e.target === helpOverlay) closeHelp(); });
@@ -2647,11 +2651,13 @@ chipsEl.addEventListener('click', (e) => {
   render();
   let helpSeen = false;
   try{ helpSeen = localStorage.getItem(HELP_SEEN_KEY) === '1'; }catch(e){}
+  const wantHelp = location.hash === '#help'; // fix-1
+  if(wantHelp) openHelp();
   if(currentList().cities.length > 0){
     await refreshAll();
-  }else if(!helpSeen){
+  }else if(!helpSeen && !wantHelp){
     openHelp();
-  }else{
+  }else if(!wantHelp){
     openSidebarPanel('panelLists');
   }
   // auto-refresh every 10 minutes
