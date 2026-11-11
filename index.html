@@ -1041,7 +1041,7 @@
       <input type="range" id="popInput" min="10000" max="1000000" step="10000" value="100000">
     </div>
 
-    <button class="ref-btn nearby-btn" id="nearbyBtn">Zoek grotere steden binnen <span id="nearbyBtnKm">250</span> km</button>
+    <button class="ref-btn nearby-btn" id="nearbyBtn">Toon steden binnen <span id="nearbyBtnKm">250</span> km</button>
     <div id="nearbyResults"></div>
   </div>
 
@@ -1146,7 +1146,7 @@
 
 
 <script>
-const APP_VERSION = '2026-11-11 — Tab heet nu Mijn locatie / Vertrekpunt (naam)';
+const APP_VERSION = '2026-11-11 17:30 — Steden vanaf 10.000 inwoners via OpenStreetMap';
 const OLD_STORAGE_KEY = 'zonzoeker:cities';
 const STORAGE_KEY = 'zonzoeker:lists';
 const NEARBY_LIST_ID = '__nearby__';
@@ -1398,9 +1398,62 @@ async function ensureRoute(city){
   render();
 }
 
+// Aanvullende steden uit OpenStreetMap (Overpass), zodat ook kleinere steden (vanaf 10.000 inw.)
+// gevonden worden. De ingebouwde EU_CITIES-lijst is maar een selectie van grote steden.
+let extraCities = [];
+let extraKey = '';
+let extraLoading = null;
+function cityPool(){ return extraCities.length ? EU_CITIES.concat(extraCities) : EU_CITIES; }
+
+async function loadExtraCities(){
+  if(!refPoint) return false;
+  const key = `${refPoint.lat.toFixed(1)}_${refPoint.lon.toFixed(1)}_${travelRadius}`;
+  if(key === extraKey) return false;
+  if(extraLoading) return extraLoading;
+  extraLoading = (async () => {
+    try{
+      const q = `[out:json][timeout:40];node["place"~"^(city|town)$"]["population"~"^[0-9]{5,}$"](around:${travelRadius * 1000},${refPoint.lat},${refPoint.lon});out;`;
+      const res = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(q)
+      });
+      if(!res.ok) return false;
+      const data = await res.json();
+      const list = [];
+      (data.elements || []).forEach(el => {
+        const t = el.tags || {};
+        const name = t['name:nl'] || t.name;
+        const pop = parseInt(t.population, 10);
+        if(!name || !pop || el.lat == null) return;
+        // sla over als er al een stad uit de vaste lijst vlakbij ligt
+        if(EU_CITIES.some(c => haversineKm(c.lat, c.lon, el.lat, el.lon) < 12)) return;
+        list.push({ n: name, r: '', c: '', lat: el.lat, lon: el.lon, pop });
+      });
+      extraCities = list;
+      extraKey = key;
+      return true;
+    }catch(e){
+      return false;
+    }finally{
+      extraLoading = null;
+    }
+  })();
+  return extraLoading;
+}
+
+async function refreshExtraCities(){
+  const changed = await loadExtraCities();
+  if(changed && appData.activeListId === NEARBY_LIST_ID){
+    renderTabs();
+    render();
+    refreshAll();
+  }
+}
+
 function searchCitiesNearby(radiusKm = 250, limit = null){
   if(!refPoint) return [];
-  const results = EU_CITIES
+  const results = cityPool()
     .filter(c => c.pop >= minPopulation)
     .map(c => ({ ...c, dist: haversineKm(refPoint.lat, refPoint.lon, c.lat, c.lon) }))
     .filter(c => c.dist <= radiusKm)
@@ -2464,7 +2517,7 @@ regionForm.addEventListener('submit', (e) => {
 regionResultsEl.addEventListener('click', async (e) => {
   const id = e.target.getAttribute('data-region-add');
   if(!id) return;
-  const hit = EU_CITIES.find(h => `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}` === id);
+  const hit = cityPool().find(h => `${h.lat.toFixed(2)}_${h.lon.toFixed(2)}` === id);
   if(!hit) return;
   e.target.disabled = true;
   const city = { id, name: hit.n, lat: hit.lat, lon: hit.lon, admin: hit.r, country: hit.c };
@@ -2513,6 +2566,7 @@ function setRefPoint(point){
   renderTabs();
   render();
   refreshAll();
+  refreshExtraCities();
 }
 
 radiusInput.addEventListener('input', () => {
@@ -2523,6 +2577,7 @@ radiusInput.addEventListener('input', () => {
 radiusInput.addEventListener('change', () => {
   saveRadius();
   routeCache = {};
+  refreshExtraCities();
   if(appData.activeListId === NEARBY_LIST_ID){
     renderTabs();
     render();
@@ -2591,12 +2646,18 @@ refForm.addEventListener('submit', async (e) => {
   refBtn.disabled = false;
 });
 
-nearbyBtn.addEventListener('click', () => {
+nearbyBtn.addEventListener('click', async () => {
   if(!refPoint){
     setStatus('Stel eerst een vertrekpunt in om steden in de buurt te vinden.', true);
     return;
   }
-  const hits = searchCitiesNearby(travelRadius, 20);
+  const oldTxt = nearbyBtn.innerHTML;
+  nearbyBtn.disabled = true;
+  nearbyBtn.textContent = 'Steden ophalen…';
+  await loadExtraCities();
+  nearbyBtn.disabled = false;
+  nearbyBtn.innerHTML = oldTxt;
+  const hits = searchCitiesNearby(travelRadius, 40);
   if(hits.length === 0){
     nearbyResultsEl.innerHTML = `<div class="region-results"><div class="region-empty">Geen steden vanaf ${minPopulation.toLocaleString('nl-NL')} inwoners gevonden binnen ${travelRadius} km van ${refPoint.name}.</div></div>`;
     return;
@@ -2608,7 +2669,7 @@ nearbyBtn.addEventListener('click', () => {
       <div class="region-hit">
         <div>
           <div class="rh-name">${h.n}</div>
-          <div class="rh-meta">${Math.round(h.dist)} km · ${h.r}, ${h.c}</div>
+          <div class="rh-meta">${Math.round(h.dist)} km · ${h.c ? `${h.r}, ${h.c}` : h.pop.toLocaleString('nl-NL') + ' inw.'}</div>
         </div>
         <button class="rh-add" data-nearby-add="${id}" ${already ? 'disabled' : ''}>${already ? 'Toegevoegd' : '+ Toevoegen'}</button>
       </div>`;
@@ -2647,6 +2708,7 @@ chipsEl.addEventListener('click', (e) => {
   renderListSelect();
   renderTabs();
   render();
+  refreshExtraCities();
   let helpSeen = false;
   try{ helpSeen = localStorage.getItem(HELP_SEEN_KEY) === '1'; }catch(e){}
   if(currentList().cities.length > 0){
