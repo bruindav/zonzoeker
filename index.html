@@ -1146,7 +1146,7 @@
 
 
 <script>
-const APP_VERSION = '2026-11-11 17:30 — Steden vanaf 10.000 inwoners via OpenStreetMap';
+const APP_VERSION = '2026-11-11 17:30 — Steden vanaf 10.000 inwoners uit eigen bestand';
 const OLD_STORAGE_KEY = 'zonzoeker:cities';
 const STORAGE_KEY = 'zonzoeker:lists';
 const NEARBY_LIST_ID = '__nearby__';
@@ -1398,13 +1398,15 @@ async function ensureRoute(city){
   render();
 }
 
-// Aanvullende steden uit OpenStreetMap (Overpass), zodat ook kleinere steden (vanaf 10.000 inw.)
+// Aanvullende steden uit steden.json (GeoNames), zodat ook kleinere steden (vanaf 10.000 inw.)
 // gevonden worden. De ingebouwde EU_CITIES-lijst is maar een selectie van grote steden.
 let extraCities = [];
 let extraKey = '';
 let extraLoading = null;
 function cityPool(){ return extraCities.length ? EU_CITIES.concat(extraCities) : EU_CITIES; }
 
+let allSmallCities = null; // uit steden.json (GeoNames, vanaf 10.000 inwoners)
+const regionNames = (()=>{ try{ return new Intl.DisplayNames(['nl'], { type: 'region' }); }catch(e){ return null; } })();
 async function loadExtraCities(){
   if(!refPoint) return false;
   const key = `${refPoint.lat.toFixed(1)}_${refPoint.lon.toFixed(1)}_${travelRadius}`;
@@ -1412,23 +1414,18 @@ async function loadExtraCities(){
   if(extraLoading) return extraLoading;
   extraLoading = (async () => {
     try{
-      const q = `[out:json][timeout:40];node["place"~"^(city|town)$"]["population"~"^[0-9]{5,}$"](around:${travelRadius * 1000},${refPoint.lat},${refPoint.lon});out;`;
-      const res = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(q)
-      });
-      if(!res.ok) return false;
-      const data = await res.json();
+      if(!allSmallCities){
+        const res = await fetch('steden.json');
+        if(!res.ok) return false;
+        allSmallCities = await res.json();
+      }
       const list = [];
-      (data.elements || []).forEach(el => {
-        const t = el.tags || {};
-        const name = t['name:nl'] || t.name;
-        const pop = parseInt(t.population, 10);
-        if(!name || !pop || el.lat == null) return;
-        // sla over als er al een stad uit de vaste lijst vlakbij ligt
-        if(EU_CITIES.some(c => haversineKm(c.lat, c.lon, el.lat, el.lon) < 12)) return;
-        list.push({ n: name, r: '', c: '', lat: el.lat, lon: el.lon, pop });
+      allSmallCities.forEach(([name, lat, lon, pop, cc]) => {
+        if(haversineKm(refPoint.lat, refPoint.lon, lat, lon) > travelRadius) return;
+        if(EU_CITIES.some(c => haversineKm(c.lat, c.lon, lat, lon) < 12)) return;
+        let land = cc;
+        try{ if(regionNames) land = regionNames.of(cc) || cc; }catch(e){ /* ignore */ }
+        list.push({ n: name, r: '', c: land, lat, lon, pop });
       });
       extraCities = list;
       extraKey = key;
@@ -2669,7 +2666,7 @@ nearbyBtn.addEventListener('click', async () => {
       <div class="region-hit">
         <div>
           <div class="rh-name">${h.n}</div>
-          <div class="rh-meta">${Math.round(h.dist)} km · ${h.c ? `${h.r}, ${h.c}` : h.pop.toLocaleString('nl-NL') + ' inw.'}</div>
+          <div class="rh-meta">${Math.round(h.dist)} km · ${h.r ? `${h.r}, ${h.c}` : `${h.c} · ${h.pop.toLocaleString('nl-NL')} inw.`}</div>
         </div>
         <button class="rh-add" data-nearby-add="${id}" ${already ? 'disabled' : ''}>${already ? 'Toegevoegd' : '+ Toevoegen'}</button>
       </div>`;
