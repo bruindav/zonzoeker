@@ -950,8 +950,8 @@
       <p>Open het menu (&#9776;) → tab "Vertrekpunt". Gebruik je locatie of typ een plaats, en stel in hoe ver je maximaal wilt reizen. Je ziet dan bij elke stad de afstand en rijtijd.</p>
     </div>
     <div class="help-item">
-      <strong>In de buurt</strong>
-      <p>Zodra een vertrekpunt is ingesteld, verschijnt automatisch een tab "📍 In de buurt" — grotere steden binnen jouw reisafstand. Ligt er in een bepaalde richting geen grote stad, dan vult Zonzoeker die aan met een punt op de kaart (bv. "Noordoost"), zodat je altijd het weer in alle richtingen kunt vergelijken.</p>
+      <strong>Mijn locatie / Vertrekpunt</strong>
+      <p>Zodra een vertrekpunt is ingesteld, verschijnt automatisch een tab met de naam van je vertrekpunt: "📍 Mijn locatie" als je GPS gebruikt, of "📍 Utrecht" (de stad die je zelf opgaf) — grotere steden binnen jouw reisafstand. Ligt er in een bepaalde richting geen grote stad, dan vult Zonzoeker die aan met een punt op de kaart (bv. "Noordoost"), zodat je altijd het weer in alle richtingen kunt vergelijken.</p>
     </div>
     <div class="help-item">
       <strong>Eigen groepen</strong>
@@ -1146,12 +1146,14 @@
 
 
 <script>
-const APP_VERSION = '2026-10-30 — fix-1: help direct te openen met #help achter het adres';
+const APP_VERSION = '2026-11-11 — Tab heet nu Mijn locatie / Vertrekpunt (naam)';
 const OLD_STORAGE_KEY = 'zonzoeker:cities';
 const STORAGE_KEY = 'zonzoeker:lists';
 const NEARBY_LIST_ID = '__nearby__';
 let appData = { lists: [], activeListId: null }; // { lists: [{id, name, cities:[...]}], activeListId }
 let weatherData = {}; // cityId -> {temp, cloud, code, isDay, forecast} — shared cache across all lists
+
+function nearbyLabel(){ return refPoint ? (refPoint.name === 'Mijn locatie' ? 'Mijn locatie' : `Vertrekpunt ${refPoint.name}`) : 'In de buurt'; }
 
 function buildNearbyList(){
   const hits = refPoint ? searchCitiesNearby(travelRadius) : [];
@@ -1162,7 +1164,7 @@ function buildNearbyList(){
   }));
   return {
     id: NEARBY_LIST_ID,
-    name: refPoint ? `In de buurt van ${refPoint.name} (${travelRadius} km)` : 'In de buurt',
+    name: refPoint ? `${nearbyLabel()} (${travelRadius} km)` : 'In de buurt',
     cities: [...cityEntries, ...fillPoints]
   };
 }
@@ -1538,14 +1540,10 @@ function openHelp(){
 }
 function closeHelp(){
   helpOverlay.classList.remove('open');
-  // fix-1: #help uit het adres halen, zodat de help niet opnieuw opent bij verversen
-  if(location.hash === '#help') history.replaceState(history.state, '', location.pathname + location.search);
   try{ localStorage.setItem(HELP_SEEN_KEY, '1'); }catch(e){}
   if(currentList().cities.length === 0) openSidebarPanel('panelLists');
 }
 helpBtn.addEventListener('click', openHelp);
-// fix-1: help openen via #help achter het adres (bijv. vanuit DigidaveStore)
-window.addEventListener('hashchange', () => { if(location.hash === '#help') openHelp(); });
 closeHelpBtn.addEventListener('click', closeHelp);
 closeHelpMainBtn.addEventListener('click', closeHelp);
 helpOverlay.addEventListener('click', (e) => { if(e.target === helpOverlay) closeHelp(); });
@@ -2346,7 +2344,7 @@ deleteGroupBtn.addEventListener('click', () => deleteListById(editListId));
 
 function renderTabs(){
   const nearbyTab = refPoint
-    ? `<button class="tab nearby-tab ${appData.activeListId === NEARBY_LIST_ID ? 'active' : ''}" data-list="${NEARBY_LIST_ID}">📍 In de buurt</button>`
+    ? `<button class="tab nearby-tab ${appData.activeListId === NEARBY_LIST_ID ? 'active' : ''}" data-list="${NEARBY_LIST_ID}">📍 ${nearbyLabel().replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}</button>`
     : '';
   listTabsEl.innerHTML = nearbyTab + appData.lists.map(l => `
     <button class="tab ${l.id === appData.activeListId ? 'active' : ''}" data-list="${l.id}">
@@ -2651,13 +2649,11 @@ chipsEl.addEventListener('click', (e) => {
   render();
   let helpSeen = false;
   try{ helpSeen = localStorage.getItem(HELP_SEEN_KEY) === '1'; }catch(e){}
-  const wantHelp = location.hash === '#help'; // fix-1
-  if(wantHelp) openHelp();
   if(currentList().cities.length > 0){
     await refreshAll();
-  }else if(!helpSeen && !wantHelp){
+  }else if(!helpSeen){
     openHelp();
-  }else if(!wantHelp){
+  }else{
     openSidebarPanel('panelLists');
   }
   // auto-refresh every 10 minutes
